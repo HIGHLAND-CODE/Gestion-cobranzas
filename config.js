@@ -7,7 +7,7 @@
    3. Guardá este archivo. No hace falta tocar nada más.
    ========================================================================== */
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyHSHm0CG8QoVLDr-uhHg34vDm_okaRlgBYKHG_kA7BDNLZhV3eMpE4QgjzFhB3vsB9/exec";
+const SCRIPT_URL = "";
 
 // Carpeta y hoja de referencia (solo informativo, se usan desde el propio script):
 const DRIVE_FOLDER_URL = "https://drive.google.com/drive/u/0/folders/1O4JPeUnD3gA8ubmEw9aG_A7xFyiPfsWq";

@@ -5,8 +5,37 @@ cobranza del día (solo lo que está **vencido**), registren el cobro con
 comprobante, y todo quede reflejado en tu Google Sheet + Google Drive
 automáticamente.
 
+## 🔴 Antes de nada: por qué no se veía nada en el celular
+
+El problema era este: cuando importabas los dos Excel en la PC, esos datos
+quedaban guardados **solo en el navegador de esa PC**. El celular del
+vendedor nunca los recibía, por eso veías la ruta en la PC pero el celular
+aparecía vacío (eso también explica el link de GitHub "sin mostrar nada").
+
+**Ya está resuelto**: ahora, cuando administración importa los Excel, la app
+sube automáticamente esos datos a Google (usando el mismo backend de Drive/
+Sheets que ya configuramos), y cada celular los descarga solo al abrir la
+app o iniciar sesión. Para que esto funcione **es obligatorio completar el
+Paso 1** de este instructivo (`config.js` con la URL del Apps Script) — sin
+eso, la app sigue funcionando pero cada dispositivo queda otra vez aislado.
+
+Si ya habías configurado `config.js` con una versión anterior del script,
+tenés que **reemplazar el contenido de tu Apps Script por el nuevo
+`gas/Code.gs`** y volver a implementar (Implementar → Gestionar
+implementaciones → editar → Nueva versión). La URL no cambia.
+
 ## Qué cambió en esta versión
 
+- **Se resolvió que el celular no recibía los datos** (ver arriba).
+- **Todas las vistas con montos** (ruta del día, ruteo del administrador,
+  consolidado de clientes, historial de gestiones, tabla de vendedores) están
+  **ordenadas de mayor a menor monto**, para priorizar los cobros más
+  importantes primero.
+- Botón **"⟳ Actualizar ruta"** en la vista del vendedor y en el panel de
+  importación del administrador, para forzar una actualización manual en
+  cualquier momento.
+- Al ingresar como vendedor por primera vez en un celular nuevo, la app
+  busca la ruta actualizada automáticamente antes de dejarte entrar.
 - Los vendedores ahora ven **solo las facturas vencidas** (vencimiento hoy o
   anterior), no toda la deuda. Un cliente con facturas que todavía no
   vencieron no aparece en la ruta del día hasta que efectivamente venzan.
@@ -77,6 +106,23 @@ siguen completando.
 3. Podés usarla sin internet para ver la ruta y cargar cobros; en cuanto
    haya señal, sincroniza sola con Google.
 
+### Si la publicás en GitHub Pages (recomendado para que los vendedores entren desde un link)
+
+1. Subí **todo el contenido** de la carpeta `app` a la raíz del repositorio
+   (que `index.html` quede en la raíz, no dentro de una subcarpeta, salvo
+   que tu link ya apunte a esa subcarpeta).
+2. Activalo en el repo: **Settings → Pages → Deploy from a branch**.
+3. Con el fix de esta versión, una vez que `config.js` tiene la URL del
+   Apps Script, **ya no importa si el celular nunca tuvo los Excel
+   importados**: al ingresar el vendedor, la app los busca sola en Google.
+4. Si después de publicar seguís viendo la página vieja o vacía en el
+   celular: es casi siempre caché. Probá:
+   - Cerrar y volver a abrir la pestaña, o modo incógnito.
+   - Mantener presionado el botón de recargar y elegir "recarga forzada" (o
+     borrar datos de navegación del sitio).
+   - Esperar 1-2 minutos después de publicar: GitHub Pages tarda un poco en
+     actualizar el link tras cada cambio.
+
 ## Uso diario — Vendedor
 
 1. Tocá **Vendedor** → ingresá tu código (ej: `31` o `V31`).
@@ -93,14 +139,18 @@ siguen completando.
      cobro"** (no requiere foto ni sube nada a la planilla, queda solo en tu
      historial local).
 4. Arriba a la derecha ves el estado de sincronización (✓ sincronizado,
-   o cuántas gestiones están pendientes de subir).
+   o cuántas gestiones están pendientes de subir). Si administración acaba
+   de importar planillas nuevas y no las ves, tocá **"⟳ Actualizar ruta"**.
+5. Los clientes se muestran ordenados de **mayor a menor deuda vencida**,
+   para que ataques primero los cobros más importantes.
 
 ## Panel del Administrador
 
 - **Resumen**: deuda vencida activa, deuda total, cobrado hoy, estado de la
   conexión con Google, uso de almacenamiento.
 - **Importar**: carga de las dos planillas de Excel (rutas y cuentas
-  corrientes), igual que antes.
+  corrientes). Al terminar, sube automáticamente la ruta a Google para que
+  los vendedores la reciban en su celular.
 - **Ruteo**: auditá cualquier vendedor/día, con la misma vista y las mismas
   acciones que ve el vendedor (podés gestionar en su nombre).
 - **Gestiones**: historial completo, con el estado de sincronización de cada

@@ -14,6 +14,7 @@ async function syncLogToSheet(log){
   }
   const entry = appData.entries.find(e=> e.codigo===log.codigo && String(e.vendedor)===String(log.vendedorCode));
   const payload = {
+    action: 'gestion',
     vendedorCode: log.vendedorCode,
     vendedorNombre: log.vendedorNombre,
     clienteCodigo: log.codigo,
@@ -90,5 +91,91 @@ async function syncPendingLogs(showToasts){
 
 // Reintenta automáticamente cuando vuelve la conexión o al abrir la app.
 if(typeof window !== 'undefined'){
-  window.addEventListener('online', ()=> syncPendingLogs(false));
+  window.addEventListener('online', ()=>{ syncPendingLogs(false); autoUpdateRouteData(false); });
+}
+
+/* ==========================================================================
+   Sincronización de los DATOS DE RUTA (lo que importa el administrador)
+   ==========================================================================
+   Antes, cuando administración importaba los dos Excel en su PC, esos datos
+   quedaban SOLO en el navegador de esa PC (localStorage), y nunca llegaban
+   al celular del vendedor. Estas funciones resuelven eso: suben los datos
+   procesados a Drive (vía el mismo Apps Script) y cada celular los descarga
+   automáticamente cuando hay una versión más nueva.
+   ========================================================================== */
+
+// Llamar después de una importación exitosa en el panel de administración.
+async function syncRouteDataToBackend(){
+  if(!isSyncConfigured()) return {ok:false, error:'SCRIPT_URL sin configurar'};
+  const payload = {
+    action: 'saveRouteData',
+    data: {
+      entries: appData.entries,
+      vendedores: appData.vendedores,
+      vendedorNombres: appData.vendedorNombres || {},
+      routesInfo: appData.routesInfo,
+      debtInfo: appData.debtInfo,
+      importedAt: appData.importedAt,
+    },
+  };
+  try{
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    return data;
+  }catch(err){
+    return {ok:false, error:'Sin conexión o error de red al subir la ruta'};
+  }
+}
+
+// Chequeo liviano: solo compara fechas, no baja los ~2MB de datos si no hace falta.
+async function checkRouteDataUpdate(){
+  if(!isSyncConfigured()) return {hasUpdate:false};
+  try{
+    const res = await fetch(SCRIPT_URL + '?action=getRouteDataMeta');
+    const data = await res.json();
+    if(!data.ok || !data.importedAt) return {hasUpdate:false};
+    const local = appData.importedAt || 0;
+    return {hasUpdate: data.importedAt > local, remoteImportedAt: data.importedAt};
+  }catch(err){
+    return {hasUpdate:false, error:'Sin conexión'};
+  }
+}
+
+// Baja los datos completos y los aplica localmente.
+async function pullRouteDataFromBackend(){
+  if(!isSyncConfigured()) return {ok:false, error:'SCRIPT_URL sin configurar'};
+  try{
+    const res = await fetch(SCRIPT_URL + '?action=getRouteData');
+    const data = await res.json();
+    if(!data.ok || !data.data) return {ok:false, error: data.error || 'No hay datos de ruta guardados todavía'};
+    appData.entries = data.data.entries || [];
+    appData.vendedores = data.data.vendedores || [];
+    appData.vendedorNombres = data.data.vendedorNombres || {};
+    appData.routesInfo = data.data.routesInfo || null;
+    appData.debtInfo = data.data.debtInfo || null;
+    appData.importedAt = data.data.importedAt || null;
+    saveData();
+    return {ok:true};
+  }catch(err){
+    return {ok:false, error:'Sin conexión o error de red al descargar la ruta'};
+  }
+}
+
+// Se llama al abrir la app (y al reconectar): si hay una ruta más nueva en el
+// servidor que la que tiene el dispositivo, la descarga sola sin molestar.
+async function autoUpdateRouteData(showToasts){
+  const check = await checkRouteDataUpdate();
+  if(!check.hasUpdate) return;
+  if(showToasts) showToast('Actualizando ruta...', '');
+  const r = await pullRouteDataFromBackend();
+  if(r.ok){
+    if(showToasts) showToast('Ruta actualizada', 'ok');
+    render();
+  }else if(showToasts){
+    showToast('No se pudo actualizar la ruta: ' + (r.error||''), 'err');
+  }
 }

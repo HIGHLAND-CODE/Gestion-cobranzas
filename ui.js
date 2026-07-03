@@ -124,7 +124,7 @@ function tplAdminLogin(){
 
 function tplSellerShell(){
   const dia = todayDiaName();
-  const list = getEntriesForVendedorDia(session.vendedorCode, dia);
+  const list = getEntriesForVendedorDia(session.vendedorCode, dia).sort((a,b)=> b._saldoVencido - a._saldoVencido);
   const withStatus = list.map(e=>({...e, _status: getEntryStatus(e)}));
   const filtered = ui.sellerFilter === 'all' ? withStatus : withStatus.filter(e=> e._status === ui.sellerFilter);
 
@@ -149,7 +149,8 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, cobradosHoy){
     return `<div class="empty-state">
       <span class="eicon">📭</span>
       <b>Todavía no hay datos cargados</b>
-      <p>Pedile al administrador que importe las planillas de ruta y cuentas corrientes.</p>
+      <p>Pedile al administrador que importe las planillas de ruta y cuentas corrientes, o probá actualizar si ya las cargó.</p>
+      <button class="btn btn-accent btn-sm" id="btnRefreshRoute" style="margin-top:12px">⟳ Buscar ruta actualizada</button>
     </div>`;
   }
   return `
@@ -157,6 +158,9 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, cobradosHoy){
     <div class="kpi"><div class="k-label">Clientes hoy</div><div class="k-value">${totalClientes}</div></div>
     <div class="kpi accent"><div class="k-label">Deuda vencida</div><div class="k-value">${fmtMoney(totalDeuda)}</div></div>
     <div class="kpi ok"><div class="k-label">Cobrados</div><div class="k-value">${cobradosHoy}/${totalClientes}</div></div>
+  </div>
+  <div style="padding:0 18px 10px;display:flex;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" id="btnRefreshRoute">⟳ Actualizar ruta</button>
   </div>
   <div class="tabbar">
     <button class="tab ${ui.sellerFilter==='all'?'active':''}" data-sf="all">Todos</button>
@@ -200,7 +204,7 @@ function tplClientRow(e){
 function tplSellerHistorial(){
   const todayStr = new Date().toDateString();
   const mine = logs.filter(l=> l.vendedorCode === String(session.vendedorCode) && new Date(l.ts).toDateString()===todayStr)
-                    .sort((a,b)=>b.ts-a.ts);
+                    .sort((a,b)=>b.monto-a.monto);
   const totalCobrado = mine.filter(l=>l.tipo!=='NOCOBRADO').reduce((s,l)=>s+l.monto,0);
   if(mine.length===0){
     return `<div class="empty-state">
@@ -332,8 +336,10 @@ function tplAdminResumen(){
       ${appData.vendedores.map(v=>{
         const rutaHoy = appData.entries.filter(e=>String(e.vendedor)===String(v) && e.dias.includes(dia) && getSaldoVencido(e)>0.5);
         const g = logsHoy.filter(l=>l.vendedorCode===String(v)).length;
-        return `<tr><td><b>${escapeHtml(getVendedorNombre(v))}</b></td><td>${rutaHoy.length}</td><td>${fmtMoney(rutaHoy.reduce((s,e)=>s+getSaldoVencido(e),0))}</td><td>${g}</td></tr>`;
-      }).join('')}
+        return {v, count:rutaHoy.length, total:rutaHoy.reduce((s,e)=>s+getSaldoVencido(e),0), g};
+      }).sort((a,b)=>b.total-a.total).map(({v,count,total,g})=>
+        `<tr><td><b>${escapeHtml(getVendedorNombre(v))}</b></td><td>${count}</td><td>${fmtMoney(total)}</td><td>${g}</td></tr>`
+      ).join('')}
     </tbody>
   </table></div>
   <div style="height:20px"></div>`;
@@ -366,6 +372,7 @@ function tplAdminImportar(){
     </div>
   </div>
   ${(r && d) ? `<div style="padding:16px 18px"><button class="btn btn-ghost btn-block" id="btnClearData">Borrar datos importados</button></div>` : ''}
+  ${isSyncConfigured() ? `<div style="padding:0 18px 16px"><button class="btn btn-ghost btn-block" id="btnRefreshRoute">⟳ Descargar la última ruta guardada en Google (si administrás desde otra PC)</button></div>` : ''}
   <div style="height:30px"></div>`;
 }
 
@@ -375,7 +382,7 @@ function tplAdminRuteo(){
   }
   const vend = ui.ruteoVendedor || appData.vendedores[0];
   const dia = ui.ruteoDia || todayDiaName();
-  const list = getEntriesForVendedorDia(vend, dia).map(e=>({...e, _status: getEntryStatus(e)}));
+  const list = getEntriesForVendedorDia(vend, dia).map(e=>({...e, _status: getEntryStatus(e)})).sort((a,b)=> b._saldoVencido - a._saldoVencido);
   const totalDeuda = list.reduce((s,e)=>s+e._saldoVencido,0);
   return `
   <div class="filter-bar">
@@ -402,7 +409,7 @@ function tplAdminGestiones(){
     filtered = filtered.filter(l=> l.ts >= cutoff);
   }
   if(ui.gestVendedor !== 'todos') filtered = filtered.filter(l=> l.vendedorCode === String(ui.gestVendedor));
-  filtered.sort((a,b)=>b.ts-a.ts);
+  filtered.sort((a,b)=>b.monto-a.monto);
   const total = filtered.filter(l=>l.tipo!=='NOCOBRADO').reduce((s,l)=>s+l.monto,0);
 
   return `
@@ -800,10 +807,20 @@ function wireEvents(){
 
   const btnSellerEnter = document.getElementById('btnSellerEnter');
   if(btnSellerEnter){
-    const doEnter = ()=>{
+    const doEnter = async ()=>{
       let code = document.getElementById('inpVendCode').value.trim().toUpperCase();
       code = code.replace(/^V/,'');
       if(!code){ showSellerErr('Ingresá tu código de vendedor'); return; }
+
+      // Si el celular todavía no tiene datos (primera vez) intentamos traerlos ahora.
+      if(appData.entries.length===0 && isSyncConfigured() && navigator.onLine){
+        btnSellerEnter.disabled = true;
+        btnSellerEnter.textContent = 'Buscando tu ruta...';
+        await pullRouteDataFromBackend();
+        btnSellerEnter.disabled = false;
+        btnSellerEnter.textContent = 'Ingresar';
+      }
+
       if(appData.vendedores.length && !appData.vendedores.includes(code)){
         showSellerErr('No encontramos ese código de vendedor en los datos importados');
         return;
@@ -812,6 +829,7 @@ function wireEvents(){
       saveSession();
       ui.screen = 'seller'; ui.sellerTab='ruta'; ui.sellerFilter='all';
       render();
+      autoUpdateRouteData(false);
     };
     btnSellerEnter.onclick = doEnter;
     const inp = document.getElementById('inpVendCode');
@@ -968,6 +986,14 @@ function wireEvents(){
   // SYNC
   const btnSyncNow = document.getElementById('btnSyncNow');
   if(btnSyncNow) btnSyncNow.onclick = ()=> syncPendingLogs(true);
+  const btnRefreshRoute = document.getElementById('btnRefreshRoute');
+  if(btnRefreshRoute) btnRefreshRoute.onclick = async ()=>{
+    if(!isSyncConfigured()){ showToast('Falta configurar la conexión con Google (config.js)', 'err'); return; }
+    showToast('Buscando la ruta más reciente...', '');
+    const r = await pullRouteDataFromBackend();
+    if(r.ok) showToast('Ruta actualizada', 'ok'); else showToast('No se pudo actualizar: '+(r.error||''), 'err');
+    render();
+  };
 
   // ADMIN VENDEDORES (nombres)
   document.querySelectorAll('.inpVendNombre').forEach(inp=>{
@@ -997,8 +1023,18 @@ async function handleImport(fileList){
       const falta = results.routes ? 'cuentas corrientes' : 'día de visita';
       showToast('Archivo cargado. Falta importar el de ' + falta + ' para armar las rutas.', '');
     }else{
-      showToast('¡Importación completa! Rutas y deudas fusionadas correctamente.', 'ok');
       ui.adminTab = 'resumen';
+      render();
+      if(isSyncConfigured()){
+        showToast('Importación completa. Subiendo ruta para que la vean los vendedores...', '');
+        const r = await syncRouteDataToBackend();
+        if(r.ok) showToast('¡Listo! Los vendedores ya pueden ver la ruta actualizada en su celular.', 'ok');
+        else showToast('Se importó, pero no se pudo subir la ruta a Google: ' + (r.error||'') + '. Probá de nuevo desde Resumen.', 'err');
+      }else{
+        showToast('Importación completa. Ojo: falta configurar config.js para que la ruta llegue a los celulares.', 'err');
+      }
+      render();
+      return;
     }
     render();
   }catch(err){
@@ -1017,7 +1053,10 @@ function initApp(){
   else if(session.role === 'admin'){ ui.screen = 'admin'; ui.adminTab = appData.entries.length ? 'resumen' : 'importar'; }
   else{ ui.screen = 'login'; }
   render();
-  if(navigator.onLine) syncPendingLogs(false);
+  if(navigator.onLine){
+    syncPendingLogs(false);
+    autoUpdateRouteData(false);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
