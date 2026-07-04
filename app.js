@@ -135,10 +135,23 @@ function normHeader(h){ return String(h).toLowerCase().replace(/[^a-z0-9]/g,'');
 function detectFileType(headers){
   const norm = headers.map(normHeader);
   const hasRouteSig = norm.includes('codigo') && norm.includes('vendedor') && norm.includes('lunes');
-  const hasDebtSig = (norm.includes('idcliente')) && (norm.includes('saldotmp') || norm.includes('importemovimiento'));
+  // La columna del código de cliente cambió de nombre entre versiones del Excel
+  // ("id cliente" -> "prov" en una carga posterior). Por eso la firma del archivo
+  // de deudas se basa en columnas que se mantuvieron estables entre versiones
+  // (SaldoTmp + ComprobanteOriginal), y el ID de cliente se busca aparte con
+  // una lista de alias (ver findClienteIdKey).
+  const hasDebtSig = norm.includes('saldotmp') && norm.includes('comprobanteoriginal') && norm.includes('razonsocial');
   if(hasRouteSig) return 'routes';
   if(hasDebtSig) return 'debts';
   return 'unknown';
+}
+
+// Alias conocidos para la columna que identifica al cliente en el archivo de
+// cuentas corrientes. Si en el futuro cambia de nombre de nuevo, agregar acá.
+const CLIENTE_ID_ALIASES = ['idcliente', 'prov', 'codigocliente', 'codcliente', 'clientecodigo', 'idprov', 'codigoprov', 'proveedor'];
+
+function findClienteIdKey(headers){
+  return findKey(headers, CLIENTE_ID_ALIASES);
 }
 
 // Extrae de una fila el nombre de columna real dado un conjunto de alias normalizados
@@ -181,7 +194,10 @@ function processRoutesRows(rows, headers){
 }
 
 function processDebtRows(rows, headers){
-  const kId = findKey(headers, ['idcliente']);
+  const kId = findClienteIdKey(headers);
+  if(!kId){
+    throw new Error('No se encontró la columna del código de cliente en el archivo de cuentas corrientes (probé: '+CLIENTE_ID_ALIASES.join(', ')+'). Revisá el nombre de esa columna en el Excel.');
+  }
   const kComp = findKey(headers, ['comprobanteoriginal']);
   const kSaldo = findKey(headers, ['saldotmp']);
   const kVenc = findKey(headers, ['fechavencoriginal']);
@@ -341,8 +357,14 @@ function isInvoiceVencida(det){
 function getDetalleVencido(entry){
   return (entry.detalle||[]).filter(isInvoiceVencida);
 }
+function getDetalleNoVencido(entry){
+  return (entry.detalle||[]).filter(d=>!isInvoiceVencida(d));
+}
 function getSaldoVencido(entry){
   return Math.round(getDetalleVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
+}
+function getSaldoNoVencido(entry){
+  return Math.round(getDetalleNoVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
 }
 
 function getEntryLogsToday(codigo, vendedor){
@@ -357,13 +379,22 @@ function getEntryStatus(entry){
   return last.tipo; // 'COBRADO' | 'PARCIAL' | 'NOCOBRADO'
 }
 
-// Devuelve las entradas de ruta del vendedor/día con deuda VENCIDA (>$0), con el detalle
-// de facturas vencidas y el saldo vencido ya calculados y adjuntos (_detalleVencido, _saldoVencido).
+// Devuelve las entradas de ruta del vendedor/día con deuda (>$0), vencida o no.
+// Se muestra toda la deuda del cliente para que el vendedor tenga el panorama
+// completo, pero queda diferenciada: _detalleVencido/_saldoVencido (lo que ya
+// venció, se puede cobrar y despachar) y _detalleNoVencido/_saldoNoVencido
+// (lo que todavía no vence, solo informativo).
 function getEntriesForVendedorDia(vendedorCode, diaName){
   return appData.entries
     .filter(e => String(e.vendedor) === String(vendedorCode) && e.dias.includes(diaName))
-    .map(e => ({...e, _detalleVencido: getDetalleVencido(e), _saldoVencido: getSaldoVencido(e)}))
-    .filter(e => e._saldoVencido > 0.5);
+    .map(e => ({
+      ...e,
+      _detalleVencido: getDetalleVencido(e),
+      _saldoVencido: getSaldoVencido(e),
+      _detalleNoVencido: getDetalleNoVencido(e),
+      _saldoNoVencido: getSaldoNoVencido(e),
+    }))
+    .filter(e => e.saldo > 0.5);
 }
 
 function addLog(entry, data, vendedorCode){

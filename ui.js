@@ -124,14 +124,15 @@ function tplAdminLogin(){
 
 function tplSellerShell(){
   const dia = todayDiaName();
-  const list = getEntriesForVendedorDia(session.vendedorCode, dia).sort((a,b)=> b._saldoVencido - a._saldoVencido);
+  const list = getEntriesForVendedorDia(session.vendedorCode, dia).sort((a,b)=> (b._saldoVencido - a._saldoVencido) || (b.saldo - a.saldo));
   const withStatus = list.map(e=>({...e, _status: getEntryStatus(e)}));
   const filtered = ui.sellerFilter === 'all' ? withStatus : withStatus.filter(e=> e._status === ui.sellerFilter);
 
-  const totalDeuda = list.reduce((s,e)=>s+e._saldoVencido,0);
+  const totalDeuda = list.reduce((s,e)=>s+e.saldo,0);
+  const totalVencido = list.reduce((s,e)=>s+e._saldoVencido,0);
   const cobradosHoy = withStatus.filter(e=>e._status==='COBRADO').length;
 
-  const body = ui.sellerTab === 'ruta' ? tplSellerRuta(dia, filtered, list.length, totalDeuda, cobradosHoy) : tplSellerHistorial();
+  const body = ui.sellerTab === 'ruta' ? tplSellerRuta(dia, filtered, list.length, totalDeuda, totalVencido, cobradosHoy) : tplSellerHistorial();
 
   return `
   <div class="app-shell">
@@ -144,7 +145,7 @@ function tplSellerShell(){
   </div>`;
 }
 
-function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, cobradosHoy){
+function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, totalVencido, cobradosHoy){
   if(!appData.entries || appData.entries.length === 0){
     return `<div class="empty-state">
       <span class="eicon">📭</span>
@@ -156,7 +157,8 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, cobradosHoy){
   return `
   <div class="kpi-row">
     <div class="kpi"><div class="k-label">Clientes hoy</div><div class="k-value">${totalClientes}</div></div>
-    <div class="kpi accent"><div class="k-label">Deuda vencida</div><div class="k-value">${fmtMoney(totalDeuda)}</div></div>
+    <div class="kpi"><div class="k-label">Deuda total</div><div class="k-value">${fmtMoney(totalDeuda)}</div></div>
+    <div class="kpi accent"><div class="k-label">Vencido</div><div class="k-value" style="color:var(--bad)">${fmtMoney(totalVencido)}</div></div>
     <div class="kpi ok"><div class="k-label">Cobrados</div><div class="k-value">${cobradosHoy}/${totalClientes}</div></div>
   </div>
   <div style="padding:0 18px 10px;display:flex;justify-content:flex-end">
@@ -172,7 +174,7 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, cobradosHoy){
     <div class="empty-state">
       <span class="eicon">✅</span>
       <b>No hay clientes en este filtro</b>
-      <p>${totalClientes===0 ? 'No tenés clientes con deuda VENCIDA asignados para hoy ('+dia+').' : 'Probá con otro filtro.'}</p>
+      <p>${totalClientes===0 ? 'No tenés clientes con deuda asignados para hoy ('+dia+').' : 'Probá con otro filtro.'}</p>
     </div>` : `<div class="list">${filtered.map(e=>tplClientRow(e)).join('')}</div>`
   }`;
 }
@@ -181,20 +183,39 @@ function tplClientRow(e){
   const statusLabel = {PENDIENTE:'Pendiente', COBRADO:'Cobrado', PARCIAL:'Parcial', NOCOBRADO:'No cobrado'}[e._status] || 'Pendiente';
   const detalleVencido = e._detalleVencido || getDetalleVencido(e);
   const saldoVencido = e._saldoVencido != null ? e._saldoVencido : getSaldoVencido(e);
+  const detalleNoVencido = e._detalleNoVencido || getDetalleNoVencido(e);
+  const saldoNoVencido = e._saldoNoVencido != null ? e._saldoNoVencido : getSaldoNoVencido(e);
+  const cantFacturas = detalleVencido.length + detalleNoVencido.length;
+
+  // Desglose de montos: si hay de los dos tipos, se muestran ambos colores;
+  // si es solo de un tipo, el monto principal ya queda de ese color.
+  let amountBlock;
+  if(saldoVencido > 0.5 && saldoNoVencido > 0.5){
+    amountBlock = `
+      <div style="text-align:right">
+        <div class="cr-amount" style="color:var(--bad)">${fmtMoney(saldoVencido)}</div>
+        <div style="font-size:11px;color:var(--ok);font-family:var(--mono);margin-top:1px">+ ${fmtMoney(saldoNoVencido)} no vencido</div>
+      </div>`;
+  }else if(saldoVencido > 0.5){
+    amountBlock = `<div class="cr-amount" style="color:var(--bad)">${fmtMoney(saldoVencido)}</div>`;
+  }else{
+    amountBlock = `<div class="cr-amount" style="color:var(--ok)">${fmtMoney(saldoNoVencido)}</div>`;
+  }
+
   return `
   <div class="client-row" data-code="${e.codigo}" data-vend="${e.vendedor}">
     <div class="cr-top">
       <div>
         <div class="cr-name">${escapeHtml(e.razon)}</div>
         <div class="cr-addr">${escapeHtml(e.direccion || 'Sin dirección registrada')}</div>
-        <div class="cr-code">#${e.codigo}${e.zona ? ' · Zona '+e.zona : ''} · ${detalleVencido.length} factura${detalleVencido.length===1?'':'s'} vencida${detalleVencido.length===1?'':'s'}</div>
+        <div class="cr-code">#${e.codigo}${e.zona ? ' · Zona '+e.zona : ''} · ${cantFacturas} factura${cantFacturas===1?'':'s'}${detalleVencido.length ? ' · <span style="color:var(--bad)">'+detalleVencido.length+' vencida'+(detalleVencido.length===1?'':'s')+'</span>' : ''}</div>
       </div>
-      <div class="cr-amount">${fmtMoney(saldoVencido)}</div>
+      ${amountBlock}
     </div>
     <div class="cr-bottom">
       <span class="status-chip status-${e._status}">${statusLabel}</span>
       <div class="cr-actions">
-        ${detalleVencido.length ? `<button class="btn btn-ghost btn-sm" data-detail="${e.codigo}">Detalle</button>` : ''}
+        ${cantFacturas ? `<button class="btn btn-ghost btn-sm" data-detail="${e.codigo}">Detalle</button>` : ''}
         <button class="btn btn-accent btn-sm" data-gestionar="${e.codigo}">Gestionar</button>
       </div>
     </div>
@@ -382,8 +403,9 @@ function tplAdminRuteo(){
   }
   const vend = ui.ruteoVendedor || appData.vendedores[0];
   const dia = ui.ruteoDia || todayDiaName();
-  const list = getEntriesForVendedorDia(vend, dia).map(e=>({...e, _status: getEntryStatus(e)})).sort((a,b)=> b._saldoVencido - a._saldoVencido);
-  const totalDeuda = list.reduce((s,e)=>s+e._saldoVencido,0);
+  const list = getEntriesForVendedorDia(vend, dia).map(e=>({...e, _status: getEntryStatus(e)})).sort((a,b)=> (b._saldoVencido - a._saldoVencido) || (b.saldo - a.saldo));
+  const totalDeuda = list.reduce((s,e)=>s+e.saldo,0);
+  const totalVencido = list.reduce((s,e)=>s+e._saldoVencido,0);
   return `
   <div class="filter-bar">
     <select id="selRuteoVend">
@@ -392,9 +414,9 @@ function tplAdminRuteo(){
     <select id="selRuteoDia">
       ${DIAS.map(d=>`<option value="${d}" ${d===dia?'selected':''}>${d}${d===todayDiaName()?' (hoy)':''}</option>`).join('')}
     </select>
-    <span class="pill" style="color:var(--ink-soft);border-color:var(--line);background:var(--card)">${list.length} clientes · ${fmtMoney(totalDeuda)}</span>
+    <span class="pill" style="color:var(--ink-soft);border-color:var(--line);background:var(--card)">${list.length} clientes · <span style="color:var(--bad)">${fmtMoney(totalVencido)} vencido</span> · ${fmtMoney(totalDeuda)} total</span>
   </div>
-  ${list.length===0 ? `<div class="empty-state"><span class="eicon">🗓️</span><b>Sin clientes con deuda vencida ese día</b><p>V${vend} no tiene clientes con facturas vencidas para ${dia}.</p></div>`
+  ${list.length===0 ? `<div class="empty-state"><span class="eicon">🗓️</span><b>Sin clientes con deuda ese día</b><p>V${vend} no tiene clientes con deuda para ${dia}.</p></div>`
     : `<div class="list">${list.map(e=>tplClientRow(e)).join('')}</div>`}
   <div style="height:20px"></div>`;
 }
@@ -468,7 +490,7 @@ function tplAdminClientes(){
           <td>${e.vendedor ? 'V'+e.vendedor : '—'}</td>
           <td>${e.dias.join(', ') || '—'}</td>
           <td>${escapeHtml(e.localidad||'—')}</td>
-          <td><b style="color:${e._saldoVencido>0.5?'var(--bad)':'inherit'}">${fmtMoney(e._saldoVencido)}</b></td>
+          <td><b style="color:${e._saldoVencido>0.5?'var(--bad)':'var(--ok)'}">${fmtMoney(e._saldoVencido)}</b></td>
           <td>${fmtMoney(e.saldo)}</td>
         </tr>`).join('')}
     </tbody>
@@ -523,6 +545,8 @@ function renderModals(){
 function tplGestionModal(entry){
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
   const saldoVencido = entry._saldoVencido != null ? entry._saldoVencido : getSaldoVencido(entry);
+  const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
+  const saldoNoVencido = entry._saldoNoVencido != null ? entry._saldoNoVencido : getSaldoNoVencido(entry);
   const seleccion = ui.gestSeleccion;
   const seleccionadas = detalleVencido.filter(d=>seleccion[d.comprobante]);
   const sumaSeleccion = Math.round(seleccionadas.reduce((s,d)=>s+d.monto,0)*100)/100;
@@ -535,21 +559,22 @@ function tplGestionModal(entry){
       <div class="modal-head">
         <div>
           <h3>${escapeHtml(entry.razon)}</h3>
-          <div class="sub">#${entry.codigo} · Deuda vencida ${fmtMoney(saldoVencido)}</div>
+          <div class="sub">#${entry.codigo} · <span style="color:var(--bad)">Vencido ${fmtMoney(saldoVencido)}</span>${saldoNoVencido>0.5 ? ' · <span style="color:var(--ok)">No vencido '+fmtMoney(saldoNoVencido)+'</span>' : ''}</div>
         </div>
         <button class="modal-close" id="closeGestion">✕</button>
       </div>
 
+      ${detalleVencido.length ? `
       <div class="field">
         <label>Facturas vencidas — marcá las que cobrás</label>
         <div class="debt-detail" style="max-height:180px">
           ${detalleVencido.map(d=>`
-            <label class="di" style="cursor:pointer;align-items:center;gap:8px">
-              <span style="display:flex;align-items:center;gap:8px">
+            <label class="di" style="cursor:pointer;align-items:center;gap:8px;color:var(--bad)">
+              <span style="display:flex;align-items:center;gap:8px;color:var(--bad)">
                 <input type="checkbox" class="chkFactura" data-comp="${escapeHtml(d.comprobante)}" ${seleccion[d.comprobante]?'checked':''}>
                 ${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}
               </span>
-              <span>${fmtMoney(d.monto)}</span>
+              <span style="color:var(--bad)"><b>${fmtMoney(d.monto)}</b></span>
             </label>`).join('')}
         </div>
       </div>
@@ -557,8 +582,21 @@ function tplGestionModal(entry){
       <div class="field">
         <label>Facturas seleccionadas</label>
         <input type="text" value="${escapeHtml(seleccionadas.map(d=>d.comprobante).join('; ') || 'Ninguna')}" readonly style="background:var(--paper);color:var(--ink-soft)">
-      </div>
+      </div>` : `<div class="empty-state" style="padding:20px"><span class="eicon">✅</span><b>Sin facturas vencidas</b><p>Este cliente no tiene deuda vencida para cobrar hoy.</p></div>`}
 
+      ${detalleNoVencido.length ? `
+      <div class="field">
+        <label>Facturas no vencidas (informativo, todavía no se cobran)</label>
+        <div class="debt-detail" style="max-height:130px">
+          ${detalleNoVencido.map(d=>`
+            <div class="di" style="color:var(--ok)">
+              <span style="color:var(--ok)">${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span>
+              <span style="color:var(--ok)"><b>${fmtMoney(d.monto)}</b></span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${detalleVencido.length ? `
       <div class="field" id="fieldMonto">
         <label>Monto cobrado</label>
         <input type="number" id="inpMonto" inputmode="decimal" value="${sumaSeleccion || ''}" step="0.01" min="0">
@@ -575,13 +613,14 @@ function tplGestionModal(entry){
           <button data-pr="Prioridad 1: Despacho en el Acto" class="${ui.gestPrioridad==='Prioridad 1: Despacho en el Acto'?'active':''}" style="${ui.gestPrioridad==='Prioridad 1: Despacho en el Acto'?'color:var(--bad)':''}">🚀 Despacho en el Acto</button>
           <button data-pr="Prioridad 2: Gestión Regular" class="${ui.gestPrioridad==='Prioridad 2: Gestión Regular'?'active':''}" style="${ui.gestPrioridad==='Prioridad 2: Gestión Regular'?'color:#2554a3':''}">📋 Gestión Regular</button>
         </div>
-      </div>
+      </div>` : ''}
 
       <div class="field" id="fieldComentario">
         <label>Observaciones (opcional)</label>
         <input type="text" id="inpComentario" placeholder="Ej: paga el jueves, dejó cheque, etc." value="${escapeHtml(ui._comentario||'')}">
       </div>
 
+      ${detalleVencido.length ? `
       <div class="photo-zone" id="photoZone">
         ${photo
           ? `${photo.isPdf
@@ -605,21 +644,34 @@ function tplGestionModal(entry){
         <button class="btn btn-primary" id="btnGuardarGestion">Guardar cobro</button>
       </div>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" id="btnVisitaSinCobro">Registrar visita sin cobro</button>
+      ` : `
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnCancelGestion">Cancelar</button>
+        <button class="btn btn-primary" id="btnVisitaSinCobro">Registrar visita</button>
+      </div>
+      `}
     </div>
   </div>`;
 }
 
 function tplDetailModal(entry){
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
+  const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
+  const todas = [...detalleVencido.map(d=>({...d, vencida:true})), ...detalleNoVencido.map(d=>({...d, vencida:false}))]
+    .sort((a,b)=> new Date(a.vencimiento||0) - new Date(b.vencimiento||0));
   return `
   <div class="modal-overlay centered" id="ovDetail">
     <div class="modal">
       <div class="modal-head">
-        <div><h3>Facturas vencidas</h3><div class="sub">${escapeHtml(entry.razon)} · #${entry.codigo}</div></div>
+        <div><h3>Todas las facturas</h3><div class="sub">${escapeHtml(entry.razon)} · #${entry.codigo}</div></div>
         <button class="modal-close" id="closeDetail">✕</button>
       </div>
+      <div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:10px">
+        <span style="color:var(--bad)">● Vencida</span>
+        <span style="color:var(--ok)">● No vencida</span>
+      </div>
       <div class="debt-detail" style="max-height:320px">
-        ${detalleVencido.map(d=>`<div class="di"><span>${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span><span>${fmtMoney(d.monto)}</span></div>`).join('')}
+        ${todas.map(d=>`<div class="di"><span style="color:${d.vencida?'var(--bad)':'var(--ok)'}">${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span><span style="color:${d.vencida?'var(--bad)':'var(--ok)'}"><b>${fmtMoney(d.monto)}</b></span></div>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn btn-primary btn-block" id="closeDetail2">Cerrar</button></div>
     </div>
@@ -686,14 +738,16 @@ function wireModalEvents(){
         showToast(err.message || 'No se pudo procesar el archivo', 'err');
       }
     };
-    inpCamera.onchange = onFileChosen;
-    inpGallery.onchange = onFileChosen;
-    inpPdf.onchange = onFileChosen;
+    if(inpCamera) inpCamera.onchange = onFileChosen;
+    if(inpGallery) inpGallery.onchange = onFileChosen;
+    if(inpPdf) inpPdf.onchange = onFileChosen;
     const btnRemove = document.getElementById('btnRemovePhoto');
     if(btnRemove) btnRemove.onclick = ()=>{ ui.pendingPhoto = null; renderModals(); };
 
-    document.getElementById('btnGuardarGestion').onclick = handleGuardarGestion;
-    document.getElementById('btnVisitaSinCobro').onclick = handleVisitaSinCobro;
+    const btnGuardarGestion = document.getElementById('btnGuardarGestion');
+    if(btnGuardarGestion) btnGuardarGestion.onclick = handleGuardarGestion;
+    const btnVisitaSinCobro = document.getElementById('btnVisitaSinCobro');
+    if(btnVisitaSinCobro) btnVisitaSinCobro.onclick = handleVisitaSinCobro;
   }
 
   const ovDetail = document.getElementById('ovDetail');

@@ -27,6 +27,10 @@ implementaciones → editar → Nueva versión). La URL no cambia.
 ## Qué cambió en esta versión
 
 - **Se resolvió que el celular no recibía los datos** (ver arriba).
+- La ruta ahora muestra **toda la deuda del cliente**, no solo lo vencido:
+  lo vencido se ve en **rojo** y lo que todavía no vence en **verde**, para
+  que el vendedor tenga el panorama completo. Solo lo vencido se puede
+  seleccionar para cobrar (lo no vencido es informativo).
 - **Todas las vistas con montos** (ruta del día, ruteo del administrador,
   consolidado de clientes, historial de gestiones, tabla de vendedores) están
   **ordenadas de mayor a menor monto**, para priorizar los cobros más
@@ -57,6 +61,11 @@ implementaciones → editar → Nueva versión). La URL no cambia.
   y se sincroniza solo apenas vuelve la conexión (o con el botón manual).
 
 ## Paso 1 — Conectar la app con tu Google Sheet y Drive (una sola vez)
+
+✅ **Ya está hecho.** `config.js` ya tiene cargada la URL de tu Apps Script
+(`.../exec`) que me pasaste, así que no tenés que hacer nada de este paso
+salvo que en algún momento vuelvas a implementar el script y te dé una URL
+distinta — en ese caso, actualizá `config.js` con la nueva.
 
 La app corre 100% en el navegador, así que para que pueda escribir en tu
 Drive y tu Sheet sin pedirle a cada vendedor que inicie sesión con una
