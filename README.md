@@ -1,4 +1,4 @@
-# Cobranzas 611 — Sistema de Ruteo y Gestión de Cobranzas
+# Cobranzas 611 — Sistema de  Gestión de Cobranzas
 
 Aplicación web local para que los vendedores vean automáticamente su ruta de
 cobranza del día (solo lo que está **vencido**), registren el cobro con
