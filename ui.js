@@ -344,11 +344,9 @@ function tplAdminResumen(){
     <div class="kpi"><div class="k-label">Ruta de hoy (${dia})</div><div class="k-value">${clientesHoy}</div></div>
     <div class="kpi"><div class="k-label">Gestiones hoy</div><div class="k-value">${logsHoy.length}</div></div>
   </div>
-  <div class="section-title">Uso de almacenamiento local</div>
-  <div class="storage-bar-wrap">
-    <div class="meta">${(totalUsage/1024/1024).toFixed(2)} MB usados aprox. (fotos incluidas)</div>
-    <div class="storage-bar"><div class="storage-bar-fill" style="width:${usagePct}%"></div></div>
-  </div>
+  ${usagePct >= 70 ? `
+  <div class="section-title" style="color:var(--warn)">⚠ Almacenamiento local al ${usagePct}% (${(totalUsage/1024/1024).toFixed(1)} MB) — exportá y borrá gestiones antiguas si sigue subiendo</div>
+  ` : ''}
   ${!isSyncConfigured() ? `<div class="section-title" style="color:var(--warn)">⚠ Conexión con Google Sheets sin configurar (ver config.js)</div>` : ''}
   <div class="section-title">Vendedores</div>
   <div class="table-wrap"><table>
