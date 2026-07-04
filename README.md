@@ -5,24 +5,7 @@ cobranza del día (solo lo que está **vencido**), registren el cobro con
 comprobante, y todo quede reflejado en tu Google Sheet + Google Drive
 automáticamente.
 
-## 🔴 Antes de nada: por qué no se veía nada en el celular
 
-El problema era este: cuando importabas los dos Excel en la PC, esos datos
-quedaban guardados **solo en el navegador de esa PC**. El celular del
-vendedor nunca los recibía, por eso veías la ruta en la PC pero el celular
-aparecía vacío (eso también explica el link de GitHub "sin mostrar nada").
-
-**Ya está resuelto**: ahora, cuando administración importa los Excel, la app
-sube automáticamente esos datos a Google (usando el mismo backend de Drive/
-Sheets que ya configuramos), y cada celular los descarga solo al abrir la
-app o iniciar sesión. Para que esto funcione **es obligatorio completar el
-Paso 1** de este instructivo (`config.js` con la URL del Apps Script) — sin
-eso, la app sigue funcionando pero cada dispositivo queda otra vez aislado.
-
-Si ya habías configurado `config.js` con una versión anterior del script,
-tenés que **reemplazar el contenido de tu Apps Script por el nuevo
-`gas/Code.gs`** y volver a implementar (Implementar → Gestionar
-implementaciones → editar → Nueva versión). La URL no cambia.
 
 ## Qué cambió en esta versión
 
