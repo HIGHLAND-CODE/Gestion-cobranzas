@@ -185,7 +185,10 @@ function tplClientRow(e){
   const saldoVencido = e._saldoVencido != null ? e._saldoVencido : getSaldoVencido(e);
   const detalleNoVencido = e._detalleNoVencido || getDetalleNoVencido(e);
   const saldoNoVencido = e._saldoNoVencido != null ? e._saldoNoVencido : getSaldoNoVencido(e);
+  const detalleCreditos = e._detalleCreditos || getDetalleCreditos(e);
+  const saldoCreditos = e._saldoCreditos != null ? e._saldoCreditos : getSaldoCreditos(e);
   const cantFacturas = detalleVencido.length + detalleNoVencido.length;
+  const cantTotal = cantFacturas + detalleCreditos.length;
 
   // Desglose de montos: si hay de los dos tipos, se muestran ambos colores;
   // si es solo de un tipo, el monto principal ya queda de ese color.
@@ -201,6 +204,7 @@ function tplClientRow(e){
   }else{
     amountBlock = `<div class="cr-amount" style="color:var(--ok)">${fmtMoney(saldoNoVencido)}</div>`;
   }
+  const creditoLine = saldoCreditos < -0.5 ? `<div style="font-size:11px;color:#2554a3;font-family:var(--mono);margin-top:1px;text-align:right">a favor ${fmtMoney(Math.abs(saldoCreditos))}</div>` : '';
 
   return `
   <div class="client-row" data-code="${e.codigo}" data-vend="${e.vendedor}">
@@ -210,12 +214,12 @@ function tplClientRow(e){
         <div class="cr-addr">${escapeHtml(e.direccion || 'Sin dirección registrada')}</div>
         <div class="cr-code">#${e.codigo}${e.zona ? ' · Zona '+e.zona : ''} · ${cantFacturas} factura${cantFacturas===1?'':'s'}${detalleVencido.length ? ' · <span style="color:var(--bad)">'+detalleVencido.length+' vencida'+(detalleVencido.length===1?'':'s')+'</span>' : ''}</div>
       </div>
-      ${amountBlock}
+      <div>${amountBlock}${creditoLine}</div>
     </div>
     <div class="cr-bottom">
       <span class="status-chip status-${e._status}">${statusLabel}</span>
       <div class="cr-actions">
-        ${cantFacturas ? `<button class="btn btn-ghost btn-sm" data-detail="${e.codigo}">Detalle</button>` : ''}
+        ${cantTotal ? `<button class="btn btn-ghost btn-sm" data-detail="${e.codigo}">Detalle</button>` : ''}
         <button class="btn btn-accent btn-sm" data-gestionar="${e.codigo}">Gestionar</button>
       </div>
     </div>
@@ -545,8 +549,12 @@ function tplGestionModal(entry){
   const saldoVencido = entry._saldoVencido != null ? entry._saldoVencido : getSaldoVencido(entry);
   const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
   const saldoNoVencido = entry._saldoNoVencido != null ? entry._saldoNoVencido : getSaldoNoVencido(entry);
+  const detalleCreditos = entry._detalleCreditos || getDetalleCreditos(entry);
+  const saldoCreditos = entry._saldoCreditos != null ? entry._saldoCreditos : getSaldoCreditos(entry);
   const seleccion = ui.gestSeleccion;
-  const seleccionadas = detalleVencido.filter(d=>seleccion[d.comprobante]);
+  const vencidasSeleccionadas = detalleVencido.filter(d=>seleccion[d.comprobante]);
+  const creditosSeleccionados = detalleCreditos.filter(d=>seleccion[d.comprobante]);
+  const seleccionadas = [...vencidasSeleccionadas, ...creditosSeleccionados];
   const sumaSeleccion = Math.round(seleccionadas.reduce((s,d)=>s+d.monto,0)*100)/100;
   const hoy = new Date().toISOString().slice(0,10);
   const photo = ui.pendingPhoto;
@@ -557,7 +565,7 @@ function tplGestionModal(entry){
       <div class="modal-head">
         <div>
           <h3>${escapeHtml(entry.razon)}</h3>
-          <div class="sub">#${entry.codigo} · <span style="color:var(--bad)">Vencido ${fmtMoney(saldoVencido)}</span>${saldoNoVencido>0.5 ? ' · <span style="color:var(--ok)">No vencido '+fmtMoney(saldoNoVencido)+'</span>' : ''}</div>
+          <div class="sub">#${entry.codigo} · <span style="color:var(--bad)">Vencido ${fmtMoney(saldoVencido)}</span>${saldoNoVencido>0.5 ? ' · <span style="color:var(--ok)">No vencido '+fmtMoney(saldoNoVencido)+'</span>' : ''}${saldoCreditos<-0.5 ? ' · <span style="color:#2554a3">A favor '+fmtMoney(Math.abs(saldoCreditos))+'</span>' : ''}</div>
         </div>
         <button class="modal-close" id="closeGestion">✕</button>
       </div>
@@ -575,12 +583,28 @@ function tplGestionModal(entry){
               <span style="color:var(--bad)"><b>${fmtMoney(d.monto)}</b></span>
             </label>`).join('')}
         </div>
-      </div>
-
-      <div class="field">
-        <label>Facturas seleccionadas</label>
-        <input type="text" value="${escapeHtml(seleccionadas.map(d=>d.comprobante).join('; ') || 'Ninguna')}" readonly style="background:var(--paper);color:var(--ink-soft)">
       </div>` : `<div class="empty-state" style="padding:20px"><span class="eicon">✅</span><b>Sin facturas vencidas</b><p>Este cliente no tiene deuda vencida para cobrar hoy.</p></div>`}
+
+      ${detalleCreditos.length ? `
+      <div class="field">
+        <label>Notas de crédito a favor — marcá las que aplicás como descuento</label>
+        <div class="debt-detail" style="max-height:130px">
+          ${detalleCreditos.map(d=>`
+            <label class="di" style="cursor:pointer;align-items:center;gap:8px;color:#2554a3">
+              <span style="display:flex;align-items:center;gap:8px;color:#2554a3">
+                <input type="checkbox" class="chkFactura" data-comp="${escapeHtml(d.comprobante)}" ${seleccion[d.comprobante]?'checked':''}>
+                ${escapeHtml(d.comprobante)}${d.vencimiento?' · '+fmtDate(d.vencimiento):''}
+              </span>
+              <span style="color:#2554a3"><b>${fmtMoney(d.monto)}</b></span>
+            </label>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${(detalleVencido.length || detalleCreditos.length) ? `
+      <div class="field">
+        <label>Seleccionadas (facturas y notas de crédito aplicadas)</label>
+        <input type="text" value="${escapeHtml(seleccionadas.map(d=>d.comprobante).join('; ') || 'Ninguna')}" readonly style="background:var(--paper);color:var(--ink-soft)">
+      </div>` : ''}
 
       ${detalleNoVencido.length ? `
       <div class="field">
@@ -596,21 +620,13 @@ function tplGestionModal(entry){
 
       ${detalleVencido.length ? `
       <div class="field" id="fieldMonto">
-        <label>Monto cobrado</label>
+        <label>Monto cobrado ${creditosSeleccionados.length ? '(ya descuenta la nota de crédito marcada)' : ''}</label>
         <input type="number" id="inpMonto" inputmode="decimal" value="${sumaSeleccion || ''}" step="0.01" min="0">
       </div>
 
       <div class="field">
         <label>Fecha de transferencia / pago</label>
         <input type="date" id="inpFechaTransf" value="${ui._fechaTransf || hoy}" max="${hoy}">
-      </div>
-
-      <div class="field">
-        <label>Prioridad de gestión</label>
-        <div class="seg" id="segPrioridad">
-          <button data-pr="Prioridad 1: Despacho en el Acto" class="${ui.gestPrioridad==='Prioridad 1: Despacho en el Acto'?'active':''}" style="${ui.gestPrioridad==='Prioridad 1: Despacho en el Acto'?'color:var(--bad)':''}">🚀 Despacho en el Acto</button>
-          <button data-pr="Prioridad 2: Gestión Regular" class="${ui.gestPrioridad==='Prioridad 2: Gestión Regular'?'active':''}" style="${ui.gestPrioridad==='Prioridad 2: Gestión Regular'?'color:#2554a3':''}">📋 Gestión Regular</button>
-        </div>
       </div>` : ''}
 
       <div class="field" id="fieldComentario">
@@ -655,8 +671,13 @@ function tplGestionModal(entry){
 function tplDetailModal(entry){
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
   const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
-  const todas = [...detalleVencido.map(d=>({...d, vencida:true})), ...detalleNoVencido.map(d=>({...d, vencida:false}))]
-    .sort((a,b)=> new Date(a.vencimiento||0) - new Date(b.vencimiento||0));
+  const detalleCreditos = entry._detalleCreditos || getDetalleCreditos(entry);
+  const todas = [
+    ...detalleVencido.map(d=>({...d, tipo:'vencida'})),
+    ...detalleNoVencido.map(d=>({...d, tipo:'novencida'})),
+    ...detalleCreditos.map(d=>({...d, tipo:'credito'})),
+  ].sort((a,b)=> new Date(a.vencimiento||0) - new Date(b.vencimiento||0));
+  const colorFor = t => t==='vencida' ? 'var(--bad)' : t==='novencida' ? 'var(--ok)' : '#2554a3';
   return `
   <div class="modal-overlay centered" id="ovDetail">
     <div class="modal">
@@ -664,12 +685,13 @@ function tplDetailModal(entry){
         <div><h3>Todas las facturas</h3><div class="sub">${escapeHtml(entry.razon)} · #${entry.codigo}</div></div>
         <button class="modal-close" id="closeDetail">✕</button>
       </div>
-      <div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:10px">
+      <div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:10px;flex-wrap:wrap">
         <span style="color:var(--bad)">● Vencida</span>
         <span style="color:var(--ok)">● No vencida</span>
+        <span style="color:#2554a3">● Nota de crédito (a favor)</span>
       </div>
       <div class="debt-detail" style="max-height:320px">
-        ${todas.map(d=>`<div class="di"><span style="color:${d.vencida?'var(--bad)':'var(--ok)'}">${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span><span style="color:${d.vencida?'var(--bad)':'var(--ok)'}"><b>${fmtMoney(d.monto)}</b></span></div>`).join('')}
+        ${todas.map(d=>`<div class="di"><span style="color:${colorFor(d.tipo)}">${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span><span style="color:${colorFor(d.tipo)}"><b>${fmtMoney(d.monto)}</b></span></div>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn btn-primary btn-block" id="closeDetail2">Cerrar</button></div>
     </div>
@@ -701,10 +723,6 @@ function wireModalEvents(){
         ui.gestSeleccion[chk.dataset.comp] = chk.checked;
         renderModals();
       };
-    });
-
-    document.querySelectorAll('#segPrioridad button').forEach(btn=>{
-      btn.onclick = ()=>{ ui.gestPrioridad = btn.dataset.pr; renderModals(); };
     });
 
     const inpMonto = document.getElementById('inpMonto');
@@ -776,17 +794,20 @@ function closeGestionModal(){
   renderModals();
 }
 
-function computeTipoGestion(entry, seleccionadas, monto){
+function computeTipoGestion(entry, vencidasSeleccionadas, monto, sumaNeta){
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
-  const sumaSeleccion = seleccionadas.reduce((s,d)=>s+d.monto,0);
-  const cubreTodo = seleccionadas.length === detalleVencido.length && Math.abs(monto - sumaSeleccion) < 1;
+  const cubreTodo = vencidasSeleccionadas.length === detalleVencido.length && Math.abs(monto - sumaNeta) < 1;
   return cubreTodo ? 'COBRADO' : 'PARCIAL';
 }
 
 async function handleGuardarGestion(){
   const entry = ui.activeEntry;
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
-  const seleccionadas = detalleVencido.filter(d=>ui.gestSeleccion[d.comprobante]);
+  const detalleCreditos = entry._detalleCreditos || getDetalleCreditos(entry);
+  const vencidasSeleccionadas = detalleVencido.filter(d=>ui.gestSeleccion[d.comprobante]);
+  const creditosSeleccionados = detalleCreditos.filter(d=>ui.gestSeleccion[d.comprobante]);
+  const seleccionadas = [...vencidasSeleccionadas, ...creditosSeleccionados];
+  const sumaNeta = Math.round(seleccionadas.reduce((s,d)=>s+d.monto,0)*100)/100;
   const inpMonto = document.getElementById('inpMonto');
   const monto = Number(inpMonto.value || 0);
   const fechaTransferencia = document.getElementById('inpFechaTransf').value;
@@ -794,19 +815,18 @@ async function handleGuardarGestion(){
   const vendActing = ui.actingVendedor || session.vendedorCode;
   const vendedorNombre = getVendedorNombre(vendActing);
 
-  if(seleccionadas.length === 0){ showToast('Marcá al menos una factura vencida', 'err'); return; }
+  if(vencidasSeleccionadas.length === 0){ showToast('Marcá al menos una factura vencida', 'err'); return; }
   if(isNaN(monto) || monto <= 0){ showToast('Ingresá un monto válido', 'err'); return; }
   if(!fechaTransferencia){ showToast('Indicá la fecha de transferencia', 'err'); return; }
-  if(!ui.gestPrioridad){ showToast('Elegí la prioridad de gestión', 'err'); return; }
   if(!ui.pendingPhoto){ showToast('Adjuntá el comprobante (foto o PDF)', 'err'); return; }
 
-  const tipo = computeTipoGestion(entry, seleccionadas, monto);
+  const tipo = computeTipoGestion(entry, vencidasSeleccionadas, monto, sumaNeta);
 
   const log = addLog(entry, {
     tipo, monto,
     facturasSeleccionadas: seleccionadas,
     fechaTransferencia,
-    prioridad: ui.gestPrioridad,
+    prioridad: null,
     comentario,
     foto: ui.pendingPhoto.dataUrl,
     fotoMime: ui.pendingPhoto.mime,
@@ -920,7 +940,15 @@ function wireEvents(){
       const entry = appData.entries.find(e=> e.codigo===codigo && String(e.vendedor)===String(vend));
       if(!entry) return;
       const detalleVencido = getDetalleVencido(entry);
-      ui.activeEntry = {...entry, _detalleVencido: detalleVencido, _saldoVencido: getSaldoVencido(entry)};
+      ui.activeEntry = {
+        ...entry,
+        _detalleVencido: detalleVencido,
+        _saldoVencido: getSaldoVencido(entry),
+        _detalleNoVencido: getDetalleNoVencido(entry),
+        _saldoNoVencido: getSaldoNoVencido(entry),
+        _detalleCreditos: getDetalleCreditos(entry),
+        _saldoCreditos: getSaldoCreditos(entry),
+      };
       ui.actingVendedor = session.role==='admin' ? vend : null;
       ui.pendingPhoto = null;
       ui.gestPrioridad = null;

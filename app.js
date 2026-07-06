@@ -227,11 +227,15 @@ function processDebtRows(rows, headers){
       };
     }
     byClient[code].saldo += saldo;
-    if(saldo > 0.5){
+    // Antes solo se guardaban los importes positivos (deuda). Los saldos negativos
+    // (notas de crédito a favor del cliente) quedaban afuera del detalle aunque sí
+    // se sumaban al total — por eso "desaparecían". Ahora se incluyen ambos.
+    if(Math.abs(saldo) > 0.5){
       byClient[code].detalle.push({
         comprobante: comp,
         monto: Math.round(saldo*100)/100,
         vencimiento: kVenc ? row[kVenc] : null,
+        esCredito: saldo < 0,
       });
     }
   }
@@ -355,16 +359,24 @@ function isInvoiceVencida(det){
   return d.getTime() <= startOfToday().getTime();
 }
 function getDetalleVencido(entry){
-  return (entry.detalle||[]).filter(isInvoiceVencida);
+  return (entry.detalle||[]).filter(d=>!d.esCredito && isInvoiceVencida(d));
 }
 function getDetalleNoVencido(entry){
-  return (entry.detalle||[]).filter(d=>!isInvoiceVencida(d));
+  return (entry.detalle||[]).filter(d=>!d.esCredito && !isInvoiceVencida(d));
+}
+// Notas de crédito a favor del cliente (montos negativos). Se muestran aparte,
+// no se clasifican como "vencidas"/"no vencidas" porque ese concepto no aplica.
+function getDetalleCreditos(entry){
+  return (entry.detalle||[]).filter(d=>d.esCredito);
 }
 function getSaldoVencido(entry){
   return Math.round(getDetalleVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
 }
 function getSaldoNoVencido(entry){
   return Math.round(getDetalleNoVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
+}
+function getSaldoCreditos(entry){
+  return Math.round(getDetalleCreditos(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
 }
 
 function getEntryLogsToday(codigo, vendedor){
@@ -393,6 +405,8 @@ function getEntriesForVendedorDia(vendedorCode, diaName){
       _saldoVencido: getSaldoVencido(e),
       _detalleNoVencido: getDetalleNoVencido(e),
       _saldoNoVencido: getSaldoNoVencido(e),
+      _detalleCreditos: getDetalleCreditos(e),
+      _saldoCreditos: getSaldoCreditos(e),
     }))
     .filter(e => e.saldo > 0.5);
 }

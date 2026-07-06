@@ -1,46 +1,76 @@
-# Cobranzas 611 — Sistema de  Gestión de Cobranzas
+# Cobranzas 611 — Sistema de Ruteo y Gestión de Cobranzas
 
 Aplicación web local para que los vendedores vean automáticamente su ruta de
 cobranza del día (solo lo que está **vencido**), registren el cobro con
 comprobante, y todo quede reflejado en tu Google Sheet + Google Drive
 automáticamente.
 
+## 🔴 Antes de nada: por qué no se veía nada en el celular
 
+El problema era este: cuando importabas los dos Excel en la PC, esos datos
+quedaban guardados **solo en el navegador de esa PC**. El celular del
+vendedor nunca los recibía, por eso veías la ruta en la PC pero el celular
+aparecía vacío (eso también explica el link de GitHub "sin mostrar nada").
+
+**Ya está resuelto**: ahora, cuando administración importa los Excel, la app
+sube automáticamente esos datos a Google (usando el mismo backend de Drive/
+Sheets que ya configuramos), y cada celular los descarga solo al abrir la
+app o iniciar sesión. Para que esto funcione **es obligatorio completar el
+Paso 1** de este instructivo (`config.js` con la URL del Apps Script) — sin
+eso, la app sigue funcionando pero cada dispositivo queda otra vez aislado.
+
+Si ya habías configurado `config.js` con una versión anterior del script,
+tenés que **reemplazar el contenido de tu Apps Script por el nuevo
+`gas/Code.gs`** y volver a implementar (Implementar → Gestionar
+implementaciones → editar → Nueva versión). La URL no cambia.
 
 ## Qué cambió en esta versión
 
-- **Se resolvió que el celular no recibía los datos** (ver arriba).
-- La ruta ahora muestra **toda la deuda del cliente**, no solo lo vencido:
-  lo vencido se ve en **rojo** y lo que todavía no vence en **verde**, para
-  que el vendedor tenga el panorama completo. Solo lo vencido se puede
-  seleccionar para cobrar (lo no vencido es informativo).
+- **Las notas de crédito ahora se pueden seleccionar para descontar del
+  cobro**: si el cliente debe una factura de $5.000 y tiene una nota de
+  crédito de $500 a favor, el vendedor puede tildar las dos y el monto se
+  autocompleta en $4.500 (lo que realmente hay que cobrar). Quedan
+  registradas ambas en "Facturas Pagadas", separadas por `;`.
+- **El script de Google ahora ubica cada columna por su nombre**, no por
+  posición fija. Esto significa que podés **borrar la columna PRIORIDAD**
+  (o cualquier otra que ya no uses) sin miedo a que se desalinee el resto de
+  la fila — el script simplemente deja de escribir ahí. **Importante:**
+  para que este arreglo tome efecto tenés que volver a implementar el script
+  (ver "Si ya tenías una versión anterior" más abajo).
+- **Se sacó el botón de prioridad** ("Despacho en el Acto" / "Gestión
+  Regular"). Si borraste la columna PRIORIDAD de tu hoja, no pasa nada; si
+  la dejaste, va a quedar vacía.
+- **Se corrigieron las notas de crédito**: los saldos negativos (montos a
+  favor del cliente) antes se sumaban al total pero no aparecían listados en
+  ningún lado. Ahora se muestran como ítems propios, en **azul**, tanto en
+  el detalle de facturas como en la pantalla de gestión — separados de lo
+  vencido (rojo) y lo no vencido (verde) para que quede clara la diferencia.
+- **Se resolvió que el celular no recibía los datos** (ver más abajo).
+- La ruta muestra **toda la deuda del cliente**, no solo lo vencido: lo
+  vencido se ve en **rojo**, lo que todavía no vence en **verde**, y las
+  notas de crédito a favor en **azul**. Solo lo vencido se puede seleccionar
+  para cobrar (el resto es informativo).
 - **Todas las vistas con montos** (ruta del día, ruteo del administrador,
   consolidado de clientes, historial de gestiones, tabla de vendedores) están
-  **ordenadas de mayor a menor monto**, para priorizar los cobros más
-  importantes primero.
+  **ordenadas de mayor a menor monto**, priorizando primero lo vencido y
+  luego la deuda total, para priorizar los cobros más importantes primero.
 - Botón **"⟳ Actualizar ruta"** en la vista del vendedor y en el panel de
   importación del administrador, para forzar una actualización manual en
   cualquier momento.
 - Al ingresar como vendedor por primera vez en un celular nuevo, la app
   busca la ruta actualizada automáticamente antes de dejarte entrar.
-- Los vendedores ahora ven **solo las facturas vencidas** (vencimiento hoy o
-  anterior), no toda la deuda. Un cliente con facturas que todavía no
-  vencieron no aparece en la ruta del día hasta que efectivamente venzan.
 - Al gestionar un cobro, el vendedor **marca qué facturas puntuales está
   cobrando** (podés cobrar 1, 2 o todas). Esas facturas quedan registradas
   separadas por `;` en la columna **Facturas Pagadas**.
-- Se agregaron **fecha de transferencia** y **prioridad de gestión**
-  (la elige el vendedor con 2 botones: 🚀 *Despacho en el Acto* / 📋 *Gestión
-  Regular*).
 - El comprobante admite **foto o PDF** (por si el cliente manda un
   comprobante generado digitalmente).
 - Cada gestión se sube automáticamente a:
   - Google Drive → carpeta que me pasaste (el comprobante, foto o PDF)
-  - Google Sheets → tu planilla, con el link al comprobante y la fila
-    coloreada según la prioridad, igual que en tu planilla de referencia.
-  - Las columnas **check** y **nombre quien imputo** quedan **vacías**: las
-    completa administración directamente en la planilla.
+  - Google Sheets → tu planilla, con el link al comprobante.
+  - Las columnas **check**, **nombre quien imputo** y **PRIORIDAD** quedan
+    **vacías**: las completa administración directamente en la planilla.
 - Si el vendedor se queda sin señal, el cobro se guarda igual en el celular
+  y se sincroniza solo apenas vuelve la conexión (o con el botón manual).
   y se sincroniza solo apenas vuelve la conexión (o con el botón manual).
 
 ## Paso 1 — Conectar la app con tu Google Sheet y Drive (una sola vez)
@@ -118,13 +148,16 @@ siguen completando.
 ## Uso diario — Vendedor
 
 1. Tocá **Vendedor** → ingresá tu código (ej: `31` o `V31`).
-2. Vas a ver **solo** los clientes con facturas **vencidas** para hoy.
+2. Vas a ver **todos** los clientes con deuda para hoy: lo vencido en rojo,
+   lo no vencido en verde, y si tienen notas de crédito a favor, en azul.
 3. Tocá **Gestionar** en un cliente:
-   - Marcá qué facturas vencidas estás cobrando (por defecto vienen todas
-     tildadas — destildá las que no cobrás).
+   - Marcá qué facturas **vencidas** estás cobrando (por defecto vienen
+     todas tildadas — destildá las que no cobrás). Las **notas de crédito**
+     a favor del cliente también se pueden tildar para descontarlas del
+     monto (ej: factura $5.000 + nota de crédito $500 tildada = $4.500 a
+     cobrar). Lo no vencido es solo informativo, no se puede tildar.
    - El monto se autocompleta con la suma de lo tildado (lo podés ajustar).
    - Poné la fecha de transferencia.
-   - Elegí la prioridad: 🚀 Despacho en el Acto o 📋 Gestión Regular.
    - Adjuntá el comprobante (foto con la cámara, de la galería, o un PDF).
    - **Guardar cobro** — se sube solo a Drive y a la planilla.
    - Si visitaste al cliente y no cobraste nada, usá **"Registrar visita sin
