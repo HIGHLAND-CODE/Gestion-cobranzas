@@ -262,7 +262,7 @@ function tplSellerHistorial(){
 
 function tplLogCard(l){
   const statusLabel = {COBRADO:'Cobrado', PARCIAL:'Parcial', NOCOBRADO:'No cobrado'}[l.tipo] || l.tipo;
-  const isPdf = l.fotoMime === 'application/pdf';
+  const isImg = (l.fotoMime||'').indexOf('image/') === 0;
   const needsSync = (l.tipo === 'COBRADO' || l.tipo === 'PARCIAL');
   let syncBadge = '';
   if(needsSync){
@@ -273,8 +273,8 @@ function tplLogCard(l){
   return `
   <div class="log-card" data-log="${l.id}">
     ${l.hasFoto
-      ? (isPdf ? `<div class="log-thumb" data-photo="${l.id}" style="display:flex;align-items:center;justify-content:center;font-size:20px">📄</div>`
-               : `<img class="log-thumb" src="${photoCache[l.id] || ''}" data-photo="${l.id}">`)
+      ? (isImg ? `<img class="log-thumb" src="${photoCache[l.id] || ''}" data-photo="${l.id}">`
+               : `<div class="log-thumb" data-photo="${l.id}" style="display:flex;align-items:center;justify-content:center;font-size:20px">📄</div>`)
       : `<div class="log-thumb empty">🧾</div>`}
     <div class="log-info">
       <div class="ltop">
@@ -656,9 +656,9 @@ function tplGestionModal(entry){
       ${hayFacturas ? `
       <div class="photo-zone" id="photoZone">
         ${photo
-          ? `${photo.isPdf
-              ? `<div style="padding:14px;font-size:13px;color:var(--ink-soft)">📄 ${escapeHtml(photo.nombre)}</div>`
-              : `<img src="${photo.dataUrl}">`}
+          ? `${(photo.mime||'').indexOf('image/') === 0
+              ? `<img src="${photo.dataUrl}">`
+              : `<div style="padding:14px;font-size:13px;color:var(--ink-soft)">📄 ${escapeHtml(photo.nombre)}</div>`}
              <div class="photo-actions"><button class="btn btn-ghost btn-sm" id="btnRemovePhoto">Quitar comprobante</button></div>`
           : `<span class="ph-label">Adjuntá el comprobante de pago (foto o PDF)</span>
              <div class="photo-actions">
@@ -669,7 +669,7 @@ function tplGestionModal(entry){
         }
         <input type="file" id="inpCamera" accept="image/*" capture="environment" class="hidden">
         <input type="file" id="inpGallery" accept="image/*" class="hidden">
-        <input type="file" id="inpPdf" accept="application/pdf" class="hidden">
+        <input type="file" id="inpPdf" accept="application/pdf,.pdf" class="hidden">
       </div>
 
       <div class="modal-actions">
@@ -718,13 +718,13 @@ function tplDetailModal(entry){
 }
 
 function tplLightbox(src){
-  const isPdfSrc = typeof src === 'string' && src.startsWith('data:application/pdf');
+  const isImageSrc = typeof src === 'string' && src.indexOf('data:image/') === 0;
   return `
   <div class="modal-overlay centered" id="ovLightbox">
     <div class="modal" style="padding:12px;text-align:center">
-      ${isPdfSrc
-        ? `<a class="btn btn-primary" href="${src}" download="comprobante.pdf">Descargar PDF</a>`
-        : `<img src="${src}" style="max-width:100%;border-radius:10px;max-height:75vh">`}
+      ${isImageSrc
+        ? `<img src="${src}" style="max-width:100%;border-radius:10px;max-height:75vh">`
+        : `<a class="btn btn-primary" href="${src}" download="comprobante">Descargar archivo</a>`}
       <div class="modal-actions"><button class="btn btn-primary btn-block" id="closeLightbox">Cerrar</button></div>
     </div>
   </div>`;

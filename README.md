@@ -32,7 +32,13 @@ a implementar como "Nueva versión" (Implementar → Gestionar implementaciones
 → ✏️ editar → Nueva versión → Implementar). La URL no cambia, no hace falta
 tocar `config.js` de nuevo.
 
-- **El vendedor ahora puede elegir el día** desde un desplegable arriba de
+- **Se arregló que los PDF no se podían adjuntar** (tiraba error o cortaba
+  la carga del cobro). El problema era que, si el celular no informaba bien
+  el tipo de archivo (pasa con algunos gestores de archivos o al compartir
+  desde otra app), la app intentaba procesarlo como si fuera una foto y
+  fallaba. Ahora un PDF nunca pasa por ese procesamiento, y si algún archivo
+  no se puede identificar con certeza, se guarda igual tal cual en vez de
+  cortar el flujo.- **El vendedor ahora puede elegir el día** desde un desplegable arriba de
   su ruta. Por defecto se posiciona en el día de hoy, pero si un cliente de
   otro día (ej. viernes) le paga hoy (ej. martes), puede cambiar el
   desplegable a "Viernes" y cargarle el cobro igual. Hay un botón "Volver a

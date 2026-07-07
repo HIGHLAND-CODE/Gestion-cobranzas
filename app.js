@@ -420,10 +420,10 @@ function compressImageFile(file, maxDim=900, quality=0.62){
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
-      img.onerror = reject;
+      img.onerror = ()=> reject(new Error('El archivo no es una imagen válida'));
       img.src = e.target.result;
     };
-    reader.onerror = reject;
+    reader.onerror = ()=> reject(new Error('No se pudo leer el archivo'));
     reader.readAsDataURL(file);
   });
 }
@@ -563,15 +563,35 @@ const MAX_ADJUNTO_MB = 8;
 
 async function handleComprobanteFile(file){
   if(!file) return null;
-  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name||'');
-  if(isPdf){
-    if(file.size > MAX_ADJUNTO_MB*1024*1024){
-      throw new Error('El PDF pesa más de '+MAX_ADJUNTO_MB+'MB. Elegí un archivo más liviano.');
-    }
-    const dataUrl = await fileToDataURL(file);
-    return {dataUrl, mime:'application/pdf', nombre: file.name || 'comprobante.pdf', isPdf:true};
-  }else{
-    const dataUrl = await compressImageFile(file);
-    return {dataUrl, mime:'image/jpeg', nombre: 'comprobante.jpg', isPdf:false};
+  if(file.size > MAX_ADJUNTO_MB*1024*1024){
+    throw new Error('El archivo pesa más de '+MAX_ADJUNTO_MB+'MB. Elegí uno más liviano.');
   }
+
+  const nombre = file.name || '';
+  const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(nombre);
+  const looksLikeImage = (file.type||'').indexOf('image/') === 0 || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(nombre);
+
+  // Un PDF nunca pasa por el procesamiento de imagen (que es lo que rompía el
+  // flujo si un PDF llegaba mal clasificado por el celular): se guarda tal cual.
+  if(looksLikePdf){
+    const dataUrl = await fileToDataURL(file);
+    return {dataUrl, mime:'application/pdf', nombre: nombre || 'comprobante.pdf', isPdf:true};
+  }
+
+  if(looksLikeImage){
+    try{
+      const dataUrl = await compressImageFile(file);
+      return {dataUrl, mime:'image/jpeg', nombre:'comprobante.jpg', isPdf:false};
+    }catch(err){
+      console.error('No se pudo procesar como imagen, se guarda el archivo original', err);
+      // sigue al respaldo genérico de abajo en vez de cortar el flujo
+    }
+  }
+
+  // Respaldo genérico: el celular no informó bien el tipo de archivo (pasa con
+  // algunos gestores de archivos o al compartir desde otras apps), o falló la
+  // compresión como imagen. Se guarda el archivo tal cual, sin intentar
+  // adivinar más — así el vendedor nunca se queda sin poder adjuntar nada.
+  const dataUrl = await fileToDataURL(file);
+  return {dataUrl, mime: file.type || 'application/octet-stream', nombre: nombre || 'comprobante', isPdf:false};
 }
