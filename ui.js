@@ -553,11 +553,13 @@ function tplGestionModal(entry){
   const saldoCreditos = entry._saldoCreditos != null ? entry._saldoCreditos : getSaldoCreditos(entry);
   const seleccion = ui.gestSeleccion;
   const vencidasSeleccionadas = detalleVencido.filter(d=>seleccion[d.comprobante]);
+  const noVencidasSeleccionadas = detalleNoVencido.filter(d=>seleccion[d.comprobante]);
   const creditosSeleccionados = detalleCreditos.filter(d=>seleccion[d.comprobante]);
-  const seleccionadas = [...vencidasSeleccionadas, ...creditosSeleccionados];
+  const seleccionadas = [...vencidasSeleccionadas, ...noVencidasSeleccionadas, ...creditosSeleccionados];
   const sumaSeleccion = Math.round(seleccionadas.reduce((s,d)=>s+d.monto,0)*100)/100;
   const hoy = new Date().toISOString().slice(0,10);
   const photo = ui.pendingPhoto;
+  const hayFacturas = detalleVencido.length || detalleNoVencido.length;
 
   return `
   <div class="modal-overlay" id="ovGestion">
@@ -583,7 +585,24 @@ function tplGestionModal(entry){
               <span style="color:var(--bad)"><b>${fmtMoney(d.monto)}</b></span>
             </label>`).join('')}
         </div>
-      </div>` : `<div class="empty-state" style="padding:20px"><span class="eicon">✅</span><b>Sin facturas vencidas</b><p>Este cliente no tiene deuda vencida para cobrar hoy.</p></div>`}
+      </div>` : ''}
+
+      ${detalleNoVencido.length ? `
+      <div class="field">
+        <label>Facturas no vencidas — también se pueden cobrar por anticipado</label>
+        <div class="debt-detail" style="max-height:150px">
+          ${detalleNoVencido.map(d=>`
+            <label class="di" style="cursor:pointer;align-items:center;gap:8px;color:var(--ok)">
+              <span style="display:flex;align-items:center;gap:8px;color:var(--ok)">
+                <input type="checkbox" class="chkFactura" data-comp="${escapeHtml(d.comprobante)}" ${seleccion[d.comprobante]?'checked':''}>
+                ${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}
+              </span>
+              <span style="color:var(--ok)"><b>${fmtMoney(d.monto)}</b></span>
+            </label>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${!hayFacturas ? `<div class="empty-state" style="padding:20px"><span class="eicon">✅</span><b>Sin facturas para cobrar</b><p>Este cliente no tiene facturas pendientes.</p></div>` : ''}
 
       ${detalleCreditos.length ? `
       <div class="field">
@@ -600,25 +619,13 @@ function tplGestionModal(entry){
         </div>
       </div>` : ''}
 
-      ${(detalleVencido.length || detalleCreditos.length) ? `
+      ${hayFacturas || detalleCreditos.length ? `
       <div class="field">
         <label>Seleccionadas (facturas y notas de crédito aplicadas)</label>
         <input type="text" value="${escapeHtml(seleccionadas.map(d=>d.comprobante).join('; ') || 'Ninguna')}" readonly style="background:var(--paper);color:var(--ink-soft)">
       </div>` : ''}
 
-      ${detalleNoVencido.length ? `
-      <div class="field">
-        <label>Facturas no vencidas (informativo, todavía no se cobran)</label>
-        <div class="debt-detail" style="max-height:130px">
-          ${detalleNoVencido.map(d=>`
-            <div class="di" style="color:var(--ok)">
-              <span style="color:var(--ok)">${escapeHtml(d.comprobante)}${d.vencimiento?' · vto '+fmtDate(d.vencimiento):''}</span>
-              <span style="color:var(--ok)"><b>${fmtMoney(d.monto)}</b></span>
-            </div>`).join('')}
-        </div>
-      </div>` : ''}
-
-      ${detalleVencido.length ? `
+      ${hayFacturas ? `
       <div class="field" id="fieldMonto">
         <label>Monto cobrado ${creditosSeleccionados.length ? '(ya descuenta la nota de crédito marcada)' : ''}</label>
         <input type="number" id="inpMonto" inputmode="decimal" value="${sumaSeleccion || ''}" step="0.01" min="0">
@@ -634,7 +641,7 @@ function tplGestionModal(entry){
         <input type="text" id="inpComentario" placeholder="Ej: paga el jueves, dejó cheque, etc." value="${escapeHtml(ui._comentario||'')}">
       </div>
 
-      ${detalleVencido.length ? `
+      ${hayFacturas ? `
       <div class="photo-zone" id="photoZone">
         ${photo
           ? `${photo.isPdf
@@ -794,19 +801,24 @@ function closeGestionModal(){
   renderModals();
 }
 
-function computeTipoGestion(entry, vencidasSeleccionadas, monto, sumaNeta){
+function computeTipoGestion(entry, facturasSeleccionadas, monto, sumaNeta){
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
-  const cubreTodo = vencidasSeleccionadas.length === detalleVencido.length && Math.abs(monto - sumaNeta) < 1;
+  const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
+  const totalFacturas = detalleVencido.length + detalleNoVencido.length;
+  const cubreTodo = facturasSeleccionadas.length === totalFacturas && Math.abs(monto - sumaNeta) < 1;
   return cubreTodo ? 'COBRADO' : 'PARCIAL';
 }
 
 async function handleGuardarGestion(){
   const entry = ui.activeEntry;
   const detalleVencido = entry._detalleVencido || getDetalleVencido(entry);
+  const detalleNoVencido = entry._detalleNoVencido || getDetalleNoVencido(entry);
   const detalleCreditos = entry._detalleCreditos || getDetalleCreditos(entry);
   const vencidasSeleccionadas = detalleVencido.filter(d=>ui.gestSeleccion[d.comprobante]);
+  const noVencidasSeleccionadas = detalleNoVencido.filter(d=>ui.gestSeleccion[d.comprobante]);
   const creditosSeleccionados = detalleCreditos.filter(d=>ui.gestSeleccion[d.comprobante]);
-  const seleccionadas = [...vencidasSeleccionadas, ...creditosSeleccionados];
+  const facturasSeleccionadas = [...vencidasSeleccionadas, ...noVencidasSeleccionadas];
+  const seleccionadas = [...facturasSeleccionadas, ...creditosSeleccionados];
   const sumaNeta = Math.round(seleccionadas.reduce((s,d)=>s+d.monto,0)*100)/100;
   const inpMonto = document.getElementById('inpMonto');
   const monto = Number(inpMonto.value || 0);
@@ -815,12 +827,12 @@ async function handleGuardarGestion(){
   const vendActing = ui.actingVendedor || session.vendedorCode;
   const vendedorNombre = getVendedorNombre(vendActing);
 
-  if(vencidasSeleccionadas.length === 0){ showToast('Marcá al menos una factura vencida', 'err'); return; }
+  if(facturasSeleccionadas.length === 0){ showToast('Marcá al menos una factura', 'err'); return; }
   if(isNaN(monto) || monto <= 0){ showToast('Ingresá un monto válido', 'err'); return; }
   if(!fechaTransferencia){ showToast('Indicá la fecha de transferencia', 'err'); return; }
   if(!ui.pendingPhoto){ showToast('Adjuntá el comprobante (foto o PDF)', 'err'); return; }
 
-  const tipo = computeTipoGestion(entry, vencidasSeleccionadas, monto, sumaNeta);
+  const tipo = computeTipoGestion(entry, facturasSeleccionadas, monto, sumaNeta);
 
   const log = addLog(entry, {
     tipo, monto,
@@ -1077,9 +1089,15 @@ function wireEvents(){
 
   // ADMIN VENDEDORES (nombres)
   document.querySelectorAll('.inpVendNombre').forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.onchange = async ()=>{
       setVendedorNombre(inp.dataset.vendcode, inp.value.trim());
-      showToast('Nombre actualizado', 'ok');
+      if(isSyncConfigured()){
+        showToast('Nombre actualizado. Subiendo a Google...', '');
+        const r = await syncRouteDataToBackend();
+        showToast(r.ok ? 'Nombre actualizado y sincronizado' : 'Se guardó localmente, pero no se pudo subir: '+(r.error||''), r.ok?'ok':'err');
+      }else{
+        showToast('Nombre actualizado (falta configurar Google para que llegue a los celulares)', '');
+      }
     };
   });
 }

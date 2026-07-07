@@ -26,6 +26,26 @@ implementaciones → editar → Nueva versión). La URL no cambia.
 
 ## Qué cambió en esta versión
 
+⚠️ **Esta actualización incluye cambios en `gas/Code.gs`.** Para que tomen
+efecto, reemplazá el contenido de tu Apps Script por el de este zip y volvé
+a implementar como "Nueva versión" (Implementar → Gestionar implementaciones
+→ ✏️ editar → Nueva versión → Implementar). La URL no cambia, no hace falta
+tocar `config.js` de nuevo.
+
+- **Se arregló que no llegaban la marca temporal, la fecha de cobro y los
+  comentarios a la planilla**: el script buscaba esas columnas por nombres
+  que no coincidían exactamente con los tuyos (vos las llamás "marca
+  temporal", "fecha de cobro" y "comentarios"). Ahora las reconoce por esos
+  nombres reales, y además tiene un respaldo por palabra clave para el
+  futuro, por si volvés a renombrar alguna columna.
+- **Se arregló que no llegaba el nombre real del vendedor**: al cambiar un
+  nombre en la pestaña "Vendedores" del panel admin, antes solo se
+  guardaba en la PC y nunca se subía a Google — por eso en la planilla
+  seguía apareciendo "V31" en vez del nombre. Ahora se sube automáticamente
+  apenas lo cargás.
+- **Ahora se pueden cobrar facturas que todavía no vencieron**, no hace
+  falta esperar al día de vencimiento. Aparecen como una lista aparte (en
+  verde) con checkbox, igual que las vencidas.
 - **Las notas de crédito ahora se pueden seleccionar para descontar del
   cobro**: si el cliente debe una factura de $5.000 y tiene una nota de
   crédito de $500 a favor, el vendedor puede tildar las dos y el monto se
@@ -152,10 +172,12 @@ siguen completando.
    lo no vencido en verde, y si tienen notas de crédito a favor, en azul.
 3. Tocá **Gestionar** en un cliente:
    - Marcá qué facturas **vencidas** estás cobrando (por defecto vienen
-     todas tildadas — destildá las que no cobrás). Las **notas de crédito**
+     todas tildadas — destildá las que no cobrás). Las facturas **no
+     vencidas** también se pueden tildar por si el cliente quiere pagar
+     por anticipado, sin esperar al vencimiento. Las **notas de crédito**
      a favor del cliente también se pueden tildar para descontarlas del
      monto (ej: factura $5.000 + nota de crédito $500 tildada = $4.500 a
-     cobrar). Lo no vencido es solo informativo, no se puede tildar.
+     cobrar).
    - El monto se autocompleta con la suma de lo tildado (lo podés ajustar).
    - Poné la fecha de transferencia.
    - Adjuntá el comprobante (foto con la cámara, de la galería, o un PDF).
