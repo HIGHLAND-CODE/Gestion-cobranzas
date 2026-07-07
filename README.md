@@ -32,7 +32,16 @@ a implementar como "Nueva versión" (Implementar → Gestionar implementaciones
 → ✏️ editar → Nueva versión → Implementar). La URL no cambia, no hace falta
 tocar `config.js` de nuevo.
 
-- **Se resolvió el problema de fondo del almacenamiento local**: antes todo
+- **El vendedor ahora puede elegir el día** desde un desplegable arriba de
+  su ruta. Por defecto se posiciona en el día de hoy, pero si un cliente de
+  otro día (ej. viernes) le paga hoy (ej. martes), puede cambiar el
+  desplegable a "Viernes" y cargarle el cobro igual. Hay un botón "Volver a
+  hoy" cuando está viendo un día distinto.
+- **La marca temporal ahora siempre muestra la hora exacta** (no solo el
+  día), y además refleja el momento real en que el vendedor cargó el dato
+  en su celular — no cuándo se terminó de sincronizar (importante si estuvo
+  sin señal y sincronizó más tarde). Así se puede detectar si algo se cargó
+  fuera del horario administrativo.- **Se resolvió el problema de fondo del almacenamiento local**: antes todo
   (rutas, deudas, gestiones y fotos de comprobantes) se guardaba en
   `localStorage`, que en la mayoría de los navegadores tiene un techo de
   5-10MB — con las fotos eso se llenaba rápido. Ahora todo vive en
@@ -177,6 +186,8 @@ siguen completando.
 1. Tocá **Vendedor** → ingresá tu código (ej: `31` o `V31`).
 2. Vas a ver **todos** los clientes con deuda para hoy: lo vencido en rojo,
    lo no vencido en verde, y si tienen notas de crédito a favor, en azul.
+   Arriba hay un desplegable con tus días de ruta — si un cliente de otro
+   día te paga hoy, cambiá el día ahí para encontrarlo y gestionarlo.
 3. Tocá **Gestionar** en un cliente:
    - Marcá qué facturas **vencidas** estás cobrando (por defecto vienen
      todas tildadas — destildá las que no cobrás). Las facturas **no

@@ -5,6 +5,7 @@
 let ui = {
   screen: 'login',            // login | sellerLogin | adminLogin | seller | admin
   sellerTab: 'ruta',          // ruta | historial
+  sellerDia: null,            // día que el vendedor está viendo (null = hoy)
   sellerFilter: 'all',        // all | PENDIENTE | COBRADO
   adminTab: 'resumen',        // resumen | importar | ruteo | gestiones | clientes | vendedores
   ruteoVendedor: null,
@@ -123,7 +124,9 @@ function tplAdminLogin(){
 /* ---------------------------- VENDEDOR ---------------------------- */
 
 function tplSellerShell(){
-  const dia = todayDiaName();
+  const dia = ui.sellerDia || todayDiaName();
+  const misDias = [...new Set(appData.entries.filter(e=>String(e.vendedor)===String(session.vendedorCode)).flatMap(e=>e.dias))]
+    .sort((a,b)=> DIAS.indexOf(a) - DIAS.indexOf(b));
   const list = getEntriesForVendedorDia(session.vendedorCode, dia).sort((a,b)=> (b._saldoVencido - a._saldoVencido) || (b.saldo - a.saldo));
   const withStatus = list.map(e=>({...e, _status: getEntryStatus(e)}));
   const filtered = ui.sellerFilter === 'all' ? withStatus : withStatus.filter(e=> e._status === ui.sellerFilter);
@@ -132,11 +135,12 @@ function tplSellerShell(){
   const totalVencido = list.reduce((s,e)=>s+e._saldoVencido,0);
   const cobradosHoy = withStatus.filter(e=>e._status==='COBRADO').length;
 
-  const body = ui.sellerTab === 'ruta' ? tplSellerRuta(dia, filtered, list.length, totalDeuda, totalVencido, cobradosHoy) : tplSellerHistorial();
+  const body = ui.sellerTab === 'ruta' ? tplSellerRuta(dia, misDias, filtered, list.length, totalDeuda, totalVencido, cobradosHoy) : tplSellerHistorial();
 
+  const viendoOtroDia = dia !== todayDiaName();
   return `
   <div class="app-shell">
-    ${topbar({title: 'V'+session.vendedorCode, subtitle: dia + ' · ' + new Date().toLocaleDateString('es-AR'), showLogout:true, showSync:true})}
+    ${topbar({title: 'V'+session.vendedorCode, subtitle: (viendoOtroDia ? 'Viendo '+dia+' · hoy es '+todayDiaName() : dia + ' · ' + new Date().toLocaleDateString('es-AR')), showLogout:true, showSync:true})}
     ${body}
     <div class="bottom-nav">
       <button class="nav-item ${ui.sellerTab==='ruta'?'active':''}" data-stab="ruta"><span class="nicon">🗺️</span><span>Mi ruta</span></button>
@@ -145,7 +149,7 @@ function tplSellerShell(){
   </div>`;
 }
 
-function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, totalVencido, cobradosHoy){
+function tplSellerRuta(dia, misDias, filtered, totalClientes, totalDeuda, totalVencido, cobradosHoy){
   if(!appData.entries || appData.entries.length === 0){
     return `<div class="empty-state">
       <span class="eicon">📭</span>
@@ -154,9 +158,17 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, totalVencido, c
       <button class="btn btn-accent btn-sm" id="btnRefreshRoute" style="margin-top:12px">⟳ Buscar ruta actualizada</button>
     </div>`;
   }
+  const hoy = todayDiaName();
+  const diasParaMostrar = misDias.length ? misDias : DIAS;
   return `
+  <div class="filter-bar">
+    <select id="selSellerDia" style="flex:1">
+      ${diasParaMostrar.map(d=>`<option value="${d}" ${d===dia?'selected':''}>${d}${d===hoy?' (hoy)':''}</option>`).join('')}
+    </select>
+    ${dia!==hoy ? `<button class="btn btn-ghost btn-sm" id="btnSellerDiaHoy">Volver a hoy</button>` : ''}
+  </div>
   <div class="kpi-row">
-    <div class="kpi"><div class="k-label">Clientes hoy</div><div class="k-value">${totalClientes}</div></div>
+    <div class="kpi"><div class="k-label">Clientes ${dia}</div><div class="k-value">${totalClientes}</div></div>
     <div class="kpi"><div class="k-label">Deuda total</div><div class="k-value">${fmtMoney(totalDeuda)}</div></div>
     <div class="kpi accent"><div class="k-label">Vencido</div><div class="k-value" style="color:var(--bad)">${fmtMoney(totalVencido)}</div></div>
     <div class="kpi ok"><div class="k-label">Cobrados</div><div class="k-value">${cobradosHoy}/${totalClientes}</div></div>
@@ -174,7 +186,7 @@ function tplSellerRuta(dia, filtered, totalClientes, totalDeuda, totalVencido, c
     <div class="empty-state">
       <span class="eicon">✅</span>
       <b>No hay clientes en este filtro</b>
-      <p>${totalClientes===0 ? 'No tenés clientes con deuda asignados para hoy ('+dia+').' : 'Probá con otro filtro.'}</p>
+      <p>${totalClientes===0 ? 'No tenés clientes con deuda asignados para '+dia+'.' : 'Probá con otro filtro.'}</p>
     </div>` : `<div class="list">${filtered.map(e=>tplClientRow(e)).join('')}</div>`
   }`;
 }
@@ -911,7 +923,7 @@ function wireEvents(){
       }
       session = {role:'seller', vendedorCode: code, vendedorLabel: 'V'+code};
       saveSession();
-      ui.screen = 'seller'; ui.sellerTab='ruta'; ui.sellerFilter='all';
+      ui.screen = 'seller'; ui.sellerTab='ruta'; ui.sellerFilter='all'; ui.sellerDia=null;
       render();
       autoUpdateRouteData(false);
     };
@@ -942,6 +954,10 @@ function wireEvents(){
   document.querySelectorAll('[data-sf]').forEach(b=>{
     b.onclick = ()=>{ ui.sellerFilter = b.dataset.sf; render(); };
   });
+  const selSellerDia = document.getElementById('selSellerDia');
+  if(selSellerDia) selSellerDia.onchange = (e)=>{ ui.sellerDia = e.target.value; render(); };
+  const btnSellerDiaHoy = document.getElementById('btnSellerDiaHoy');
+  if(btnSellerDiaHoy) btnSellerDiaHoy.onclick = ()=>{ ui.sellerDia = null; render(); };
 
   // CLIENT ROWS (gestionar / detalle) — funciona tanto en vista vendedor como admin-ruteo
   document.querySelectorAll('[data-gestionar]').forEach(b=>{

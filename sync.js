@@ -24,6 +24,7 @@ async function syncLogToSheet(log){
     montoCobrado: log.monto,
     observaciones: log.comentario,
     prioridad: log.prioridad,
+    fechaCargaOriginal: log.ts, // momento real en que el vendedor lo cargó en su celular (no cuándo sincronizó)
     fotoBase64: null,
     fotoMime: log.fotoMime,
     fotoNombre: log.fotoNombre,
