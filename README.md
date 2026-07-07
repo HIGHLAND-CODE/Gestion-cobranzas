@@ -32,7 +32,14 @@ a implementar como "Nueva versión" (Implementar → Gestionar implementaciones
 → ✏️ editar → Nueva versión → Implementar). La URL no cambia, no hace falta
 tocar `config.js` de nuevo.
 
-- **Se arregló que no llegaban la marca temporal, la fecha de cobro y los
+- **Se resolvió el problema de fondo del almacenamiento local**: antes todo
+  (rutas, deudas, gestiones y fotos de comprobantes) se guardaba en
+  `localStorage`, que en la mayoría de los navegadores tiene un techo de
+  5-10MB — con las fotos eso se llenaba rápido. Ahora todo vive en
+  **IndexedDB**, que no tiene ese techo bajo (permite guardar muchísimo
+  más, atado al espacio libre del dispositivo). Esto es automático: al
+  abrir la app por primera vez con esta versión, migra sola todo lo que
+  ya tenías guardado y libera el espacio viejo. No hay que hacer nada.- **Se arregló que no llegaban la marca temporal, la fecha de cobro y los
   comentarios a la planilla**: el script buscaba esas columnas por nombres
   que no coincidían exactamente con los tuyos (vos las llamás "marca
   temporal", "fecha de cobro" y "comentarios"). Ahora las reconoce por esos
@@ -220,6 +227,9 @@ siguen completando.
   sincronización).
 - Los PDFs no se comprimen (se suben tal cual); las fotos sí, para no gastar
   espacio ni datos móviles. Límite de 8MB por comprobante.
+- Todo (rutas, deudas, gestiones y fotos) se guarda en **IndexedDB**, no en
+  `localStorage`, así que el aviso de "almacenamiento local" del panel de
+  Resumen prácticamente no debería volver a aparecer.
 - Contraseña de administrador: `admin611` (se puede cambiar editando
   `ADMIN_PASS` en `app.js`).
 
@@ -228,6 +238,7 @@ siguen completando.
 ```
 index.html          → abrir este archivo
 styles.css
+db.js                → almacenamiento persistente (IndexedDB)
 app.js               → datos, importación de Excel, lógica de vencidos
 config.js            → ⚠️ acá va la URL de tu Apps Script (Paso 1)
 sync.js               → sincronización con Google Sheets/Drive

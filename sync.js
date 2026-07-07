@@ -28,10 +28,18 @@ async function syncLogToSheet(log){
     fotoMime: log.fotoMime,
     fotoNombre: log.fotoNombre,
   };
-  if(log.foto){
-    const {mime, base64} = splitDataUrl(log.foto);
-    payload.fotoBase64 = base64;
-    payload.fotoMime = log.fotoMime || mime;
+  if(log.hasFoto){
+    let fotoDataUrl = photoCache[log.id];
+    if(!fotoDataUrl){
+      // No estaba en la caché de memoria (por ejemplo, se reinició la app justo
+      // después de guardar): se busca directamente en IndexedDB como respaldo.
+      try{ fotoDataUrl = await idbGet(STORE_PHOTOS, log.id); }catch(e){ console.error(e); }
+    }
+    if(fotoDataUrl){
+      const {mime, base64} = splitDataUrl(fotoDataUrl);
+      payload.fotoBase64 = base64;
+      payload.fotoMime = log.fotoMime || mime;
+    }
   }
 
   try{

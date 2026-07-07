@@ -17,7 +17,7 @@ function exportLogsToExcel(filteredLogs){
     'Prioridad': l.prioridad || '',
     'Saldo Vencido al Momento': l.saldoVencidoAlMomento != null ? l.saldoVencidoAlMomento : '',
     'Comentario': l.comentario || '',
-    'Con Comprobante': l.foto ? 'SI' : 'NO',
+    'Con Comprobante': l.hasFoto ? 'SI' : 'NO',
     'Sincronizado con Sheets': l.synced ? 'SI' : 'NO',
     'Link Drive': l.driveLink || '',
   }));

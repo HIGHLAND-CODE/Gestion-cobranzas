@@ -5,6 +5,7 @@
 
 const DIAS = ['Lunes','Martes','Miercoles','Jueves','Viernes','Sabado','Domingo'];
 const DIA_COLS = {lunes:'Lunes', martes:'Martes', miercoles:'Miercoles', jueves:'Jueves', viernes:'Viernes', sabado:'Sabado', domingo:'Domingo'};
+// Claves legacy (localStorage) — se usan solo para migrar datos viejos una vez.
 const LS_DATA = 'sarc611_data_v1';
 const LS_LOGS = 'sarc611_logs_v1';
 const SS_SESSION = 'sarc611_session_v1';
@@ -13,51 +14,58 @@ const ADMIN_PASS = 'admin611';
 let appData = {
   entries: [],       // filas de ruteo fusionadas con deuda
   vendedores: [],     // codigos de vendedor detectados
+  vendedorNombres: {},
   importedAt: null,
   routesInfo: null,
   debtInfo: null,
 };
-let logs = []; // {id, ts, vendedorCode, codigo, razon, tipo, monto, foto, comentario}
+let logs = []; // {id, ts, vendedorCode, codigo, razon, tipo, monto, hasFoto, comentario, ...}
+
+// Caché en memoria de las fotos (id de gestión -> dataURL). Las fotos viven
+// persistidas en IndexedDB; esta caché evita tener que leerlas de nuevo cada
+// vez que hay que dibujar la pantalla dentro de la misma sesión.
+let photoCache = {};
 
 let session = { role: 'none', vendedorCode: null, vendedorLabel: null };
 
-// Datos crudos parseados en esta sesión (no se persisten en localStorage para no duplicar peso).
+// Datos crudos parseados en esta sesión (no se persisten para no duplicar peso).
 // Permiten fusionar aunque los dos archivos se importen en pasos separados dentro de la misma sesión.
 let _lastRouteEntries = null;
 let _lastDebtByClient = null;
 
-/* ---------------------------- Persistencia ---------------------------- */
+/* ---------------------------- Persistencia (IndexedDB) ---------------------------- */
 
-function saveData(){
+async function saveData(){
   try{
-    localStorage.setItem(LS_DATA, JSON.stringify(appData));
+    await idbSet(STORE_KV, 'appData', appData);
     return true;
   }catch(e){
     console.error(e);
-    showToast('No se pudo guardar: almacenamiento lleno. Exportá y limpiá gestiones antiguas.', 'err');
+    showToast('No se pudo guardar los datos de ruta: ' + (e.message||''), 'err');
     return false;
   }
 }
-function loadData(){
+async function loadData(){
   try{
-    const raw = localStorage.getItem(LS_DATA);
-    if(raw) appData = JSON.parse(raw);
+    const stored = await idbGet(STORE_KV, 'appData');
+    if(stored) appData = stored;
+    if(!appData.vendedorNombres) appData.vendedorNombres = {};
   }catch(e){ console.error('Error leyendo datos', e); }
 }
-function saveLogs(){
+async function saveLogs(){
   try{
-    localStorage.setItem(LS_LOGS, JSON.stringify(logs));
+    await idbSet(STORE_KV, 'logs', logs);
     return true;
   }catch(e){
     console.error(e);
-    showToast('No se pudo guardar la gestión: almacenamiento lleno.', 'err');
+    showToast('No se pudo guardar la gestión: ' + (e.message||''), 'err');
     return false;
   }
 }
-function loadLogs(){
+async function loadLogs(){
   try{
-    const raw = localStorage.getItem(LS_LOGS);
-    if(raw) logs = JSON.parse(raw);
+    const stored = await idbGet(STORE_KV, 'logs');
+    if(stored) logs = stored;
   }catch(e){ console.error('Error leyendo logs', e); }
 }
 function saveSession(){ sessionStorage.setItem(SS_SESSION, JSON.stringify(session)); }
@@ -68,7 +76,86 @@ function loadSession(){
   }catch(e){}
 }
 
+// Precarga todas las fotos guardadas en IndexedDB a memoria, para que el resto
+// de la app pueda dibujar las miniaturas sin tener que esperar una consulta
+// asincrónica cada vez que se re-renderiza la pantalla.
+async function preloadPhotoCache(){
+  try{
+    photoCache = await idbGetAll(STORE_PHOTOS);
+  }catch(e){
+    console.error('Error precargando fotos', e);
+    photoCache = {};
+  }
+}
+
+async function savePhotoFor(logId, dataUrl){
+  photoCache[logId] = dataUrl; // disponible al instante en esta sesión
+  try{
+    await idbSet(STORE_PHOTOS, logId, dataUrl);
+  }catch(e){
+    console.error('No se pudo persistir la foto en IndexedDB', e);
+    showToast('La foto no se pudo guardar de forma permanente (quedó disponible solo por ahora)', 'err');
+  }
+}
+
+async function deletePhotoFor(logId){
+  delete photoCache[logId];
+  try{ await idbDelete(STORE_PHOTOS, logId); }catch(e){ console.error(e); }
+}
+
+async function clearAllPhotos(){
+  photoCache = {};
+  try{ await idbClear(STORE_PHOTOS); }catch(e){ console.error(e); }
+}
+
+// Migra datos que hayan quedado guardados con la versión anterior (localStorage),
+// incluyendo fotos que estaban embebidas dentro de cada gestión. Se ejecuta una
+// sola vez al iniciar; después de migrar, borra las claves viejas para liberar
+// espacio del navegador.
+async function migrateLegacyLocalStorage(){
+  let migrated = false;
+  try{
+    const rawData = localStorage.getItem(LS_DATA);
+    if(rawData){
+      const legacyAppData = JSON.parse(rawData);
+      if(legacyAppData && (!appData.entries || appData.entries.length === 0)){
+        appData = legacyAppData;
+        if(!appData.vendedorNombres) appData.vendedorNombres = {};
+        await saveData();
+      }
+      localStorage.removeItem(LS_DATA);
+      migrated = true;
+    }
+  }catch(e){ console.error('Error migrando appData legacy', e); }
+
+  try{
+    const rawLogs = localStorage.getItem(LS_LOGS);
+    if(rawLogs){
+      const legacyLogs = JSON.parse(rawLogs);
+      if(Array.isArray(legacyLogs) && legacyLogs.length && (!logs || logs.length === 0)){
+        for(const l of legacyLogs){
+          if(l.foto){
+            await savePhotoFor(l.id, l.foto);
+            l.hasFoto = true;
+            delete l.foto;
+          }else{
+            l.hasFoto = !!l.hasFoto;
+          }
+        }
+        logs = legacyLogs;
+        await saveLogs();
+      }
+      localStorage.removeItem(LS_LOGS);
+      migrated = true;
+    }
+  }catch(e){ console.error('Error migrando logs legacy', e); }
+
+  if(migrated) console.log('Migración de localStorage a IndexedDB completa.');
+}
+
 function estimateStorageUsage(){
+  // Ya no se usa localStorage como almacenamiento principal (ahora es IndexedDB,
+  // que no tiene el techo bajo de 5-10MB), así que esto queda casi siempre en 0.
   let total = 0;
   try{
     for(const k in localStorage){
@@ -309,7 +396,7 @@ async function importFiles(fileList){
     appData.entries = mergeData(_lastRouteEntries, _lastDebtByClient);
     appData.vendedores = [...new Set(appData.entries.map(e=>e.vendedor).filter(v=>v))].sort((a,b)=> Number(a)-Number(b) || a.localeCompare(b));
     appData.importedAt = Date.now();
-    saveData();
+    await saveData();
   }
 
   results.merged = !!(_lastRouteEntries && _lastDebtByClient);
@@ -426,7 +513,7 @@ function addLog(entry, data, vendedorCode){
     fechaTransferencia: data.fechaTransferencia || null,
     prioridad: data.prioridad || null, // 'Prioridad 1: Despacho en el Acto' | 'Prioridad 2: Gestión Regular'
     saldoVencidoAlMomento: getSaldoVencido(entry),
-    foto: data.foto || null,
+    hasFoto: !!data.foto,
     fotoMime: data.fotoMime || null,
     fotoNombre: data.fotoNombre || null,
     comentario: data.comentario || '',
@@ -436,6 +523,7 @@ function addLog(entry, data, vendedorCode){
   };
   logs.push(log);
   saveLogs();
+  if(data.foto) savePhotoFor(log.id, data.foto); // asíncrono, no bloquea: ya queda disponible en photoCache al instante
   return log;
 }
 

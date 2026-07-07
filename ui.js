@@ -260,9 +260,9 @@ function tplLogCard(l){
   }
   return `
   <div class="log-card" data-log="${l.id}">
-    ${l.foto
+    ${l.hasFoto
       ? (isPdf ? `<div class="log-thumb" data-photo="${l.id}" style="display:flex;align-items:center;justify-content:center;font-size:20px">📄</div>`
-               : `<img class="log-thumb" src="${l.foto}" data-photo="${l.id}">`)
+               : `<img class="log-thumb" src="${photoCache[l.id] || ''}" data-photo="${l.id}">`)
       : `<div class="log-thumb empty">🧾</div>`}
     <div class="log-info">
       <div class="ltop">
@@ -985,9 +985,15 @@ function wireEvents(){
     };
   });
   document.querySelectorAll('[data-photo]').forEach(el=>{
-    el.onclick = ()=>{
+    el.onclick = async ()=>{
       const log = logs.find(l=>l.id===el.dataset.photo);
-      if(log && log.foto){ ui.lightboxPhoto = log.foto; renderModals(); }
+      if(!log || !log.hasFoto) return;
+      let src = photoCache[log.id];
+      if(!src){
+        try{ src = await idbGet(STORE_PHOTOS, log.id); }catch(e){ console.error(e); }
+      }
+      if(src){ ui.lightboxPhoto = src; renderModals(); }
+      else showToast('No se pudo cargar el comprobante', 'err');
     };
   });
   document.querySelectorAll('[data-resync]').forEach(b=>{
@@ -1050,10 +1056,11 @@ function wireEvents(){
     showToast('Excel exportado', 'ok');
   };
   const btnClearLogs = document.getElementById('btnClearLogs');
-  if(btnClearLogs) btnClearLogs.onclick = ()=>{
+  if(btnClearLogs) btnClearLogs.onclick = async ()=>{
     if(confirm('¿Borrar TODO el historial de gestiones (cobros, fotos y comentarios)? Te recomendamos exportar a Excel antes. Esta acción no se puede deshacer.')){
       logs = [];
       saveLogs();
+      await clearAllPhotos();
       showToast('Historial de gestiones borrado', 'ok');
       render();
     }
@@ -1143,9 +1150,11 @@ async function handleImport(fileList){
 
 /* ---------------------------- INIT ---------------------------- */
 
-function initApp(){
-  loadData();
-  loadLogs();
+async function initApp(){
+  await migrateLegacyLocalStorage();
+  await loadData();
+  await loadLogs();
+  await preloadPhotoCache();
   loadSession();
   if(session.role === 'seller'){ ui.screen = 'seller'; }
   else if(session.role === 'admin'){ ui.screen = 'admin'; ui.adminTab = appData.entries.length ? 'resumen' : 'importar'; }
