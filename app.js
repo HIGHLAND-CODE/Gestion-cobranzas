@@ -224,10 +224,13 @@ function detectFileType(headers){
   const hasRouteSig = norm.includes('codigo') && norm.includes('vendedor') && norm.includes('lunes');
   // La columna del código de cliente cambió de nombre entre versiones del Excel
   // ("id cliente" -> "prov" en una carga posterior). Por eso la firma del archivo
-  // de deudas se basa en columnas que se mantuvieron estables entre versiones
-  // (SaldoTmp + ComprobanteOriginal), y el ID de cliente se busca aparte con
-  // una lista de alias (ver findClienteIdKey).
-  const hasDebtSig = norm.includes('saldotmp') && norm.includes('comprobanteoriginal') && norm.includes('razonsocial');
+  // de deudas se basa en columnas que se mantuvieron estables entre versiones,
+  // y el ID de cliente se busca aparte con una lista de alias (ver findClienteIdKey).
+  // El archivo de cuentas corrientes actual ("BIEN") no trae SaldoTmp — trae
+  // ImporteOriginal/ImporteMovimiento en su lugar. Se acepta cualquiera de las dos
+  // variantes para no depender de una columna que ya no existe en el archivo nuevo.
+  const hasDebtSig = norm.includes('comprobanteoriginal') && norm.includes('razonsocial')
+    && (norm.includes('saldotmp') || norm.includes('importeoriginal') || norm.includes('importemovimiento'));
   if(hasRouteSig) return 'routes';
   if(hasDebtSig) return 'debts';
   return 'unknown';
@@ -286,24 +289,33 @@ function processDebtRows(rows, headers){
     throw new Error('No se encontró la columna del código de cliente en el archivo de cuentas corrientes (probé: '+CLIENTE_ID_ALIASES.join(', ')+'). Revisá el nombre de esa columna en el Excel.');
   }
   const kComp = findKey(headers, ['comprobanteoriginal']);
-  const kSaldo = findKey(headers, ['saldotmp']);
+  // El monto pendiente puede venir en distintas columnas según la versión del
+  // archivo: "SaldoTmp" (formato viejo, ya no se usa) o "ImporteMovimiento"/
+  // "ImporteOriginal" (formato actual "BIEN"). Se prueba en ese orden.
+  const kSaldo = findKey(headers, ['saldotmp']) || findKey(headers, ['importemovimiento']) || findKey(headers, ['importeoriginal']);
   const kVenc = findKey(headers, ['fechavencoriginal']);
   const kTel = findKey(headers, ['telefono']);
   const kLoc = findKey(headers, ['localidad']);
   const kCond = findKey(headers, ['condpago']);
   const kFantasia = findKey(headers, ['fantasia']);
 
-  const seen = new Set();
   const byClient = {};
+  // El archivo "BIEN" puede traer MÁS DE UNA fila para el mismo comprobante
+  // cuando ya se le aplicó un pago parcial (la factura original + el movimiento
+  // del pago parcial, cada una con su propio importe). Hay que sumar todas las
+  // filas de un mismo comprobante para quedarse con el saldo realmente
+  // pendiente de esa factura, en vez de tomar solo la primera fila que aparezca
+  // (que es lo que pasaba antes y podía traer un monto viejo o incompleto).
+  const compAcc = {}; // key: codigo+'||'+comprobante -> {code, comp, monto, vencimiento}
+
   for(const row of rows){
     const codigo = row[kId];
     if(codigo === null || codigo === undefined || codigo === '') continue;
     const code = String(codigo).trim();
     const comp = kComp ? String(row[kComp]) : Math.random();
-    const dedupeKey = code + '||' + comp;
-    if(seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
+    const key = code + '||' + comp;
     const saldo = kSaldo ? (Number(row[kSaldo])||0) : 0;
+
     if(!byClient[code]){
       byClient[code] = {
         saldo: 0, detalle: [],
@@ -313,19 +325,29 @@ function processDebtRows(rows, headers){
         fantasia: kFantasia ? (row[kFantasia]||'') : '',
       };
     }
-    byClient[code].saldo += saldo;
-    // Antes solo se guardaban los importes positivos (deuda). Los saldos negativos
-    // (notas de crédito a favor del cliente) quedaban afuera del detalle aunque sí
-    // se sumaban al total — por eso "desaparecían". Ahora se incluyen ambos.
-    if(Math.abs(saldo) > 0.5){
+    if(!compAcc[key]){
+      compAcc[key] = { code, comp, monto: 0, vencimiento: kVenc ? row[kVenc] : null };
+    }
+    compAcc[key].monto += saldo;
+  }
+
+  // Antes solo se guardaban los importes positivos (deuda). Los saldos negativos
+  // (notas de crédito a favor del cliente) quedaban afuera del detalle aunque sí
+  // se sumaban al total — por eso "desaparecían". Ahora se incluyen ambos.
+  for(const key in compAcc){
+    const { code, comp, monto, vencimiento } = compAcc[key];
+    const montoRedondeado = Math.round(monto*100)/100;
+    byClient[code].saldo += montoRedondeado;
+    if(Math.abs(montoRedondeado) > 0.5){
       byClient[code].detalle.push({
         comprobante: comp,
-        monto: Math.round(saldo*100)/100,
-        vencimiento: kVenc ? row[kVenc] : null,
-        esCredito: saldo < 0,
+        monto: montoRedondeado,
+        vencimiento,
+        esCredito: montoRedondeado < 0,
       });
     }
   }
+
   for(const code in byClient){
     byClient[code].saldo = Math.round(byClient[code].saldo*100)/100;
     byClient[code].detalle.sort((a,b)=> (new Date(a.vencimiento||0)) - (new Date(b.vencimiento||0)));
