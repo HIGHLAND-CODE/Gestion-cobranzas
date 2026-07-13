@@ -478,11 +478,22 @@ function getDetalleNoVencido(entry){
 function getDetalleCreditos(entry){
   return (entry.detalle||[]).filter(d=>d.esCredito);
 }
+// Antes esta función solo sumaba las facturas vencidas y dejaba las notas de
+// crédito completamente afuera del total (aunque sí se mostraban aparte, en
+// azul). Eso hacía que "Deuda Vencida" quedara inflada: si una NC a favor ya
+// está vencida (su propia fecha de vencimiento ya pasó), tiene que descontarse
+// del total vencido igual que descontaría el sistema de origen. Ahora se sigue
+// mostrando la NC aparte (en azul) para que quede clara la diferencia, pero
+// su importe si se resta del total cuando corresponde.
 function getSaldoVencido(entry){
-  return Math.round(getDetalleVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
+  const facturas = getDetalleVencido(entry).reduce((s,d)=>s+d.monto,0);
+  const creditosVencidos = (entry.detalle||[]).filter(d=>d.esCredito && isInvoiceVencida(d)).reduce((s,d)=>s+d.monto,0);
+  return Math.round((facturas + creditosVencidos)*100)/100;
 }
 function getSaldoNoVencido(entry){
-  return Math.round(getDetalleNoVencido(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
+  const facturas = getDetalleNoVencido(entry).reduce((s,d)=>s+d.monto,0);
+  const creditosNoVencidos = (entry.detalle||[]).filter(d=>d.esCredito && !isInvoiceVencida(d)).reduce((s,d)=>s+d.monto,0);
+  return Math.round((facturas + creditosNoVencidos)*100)/100;
 }
 function getSaldoCreditos(entry){
   return Math.round(getDetalleCreditos(entry).reduce((s,d)=>s+d.monto,0)*100)/100;
