@@ -560,6 +560,59 @@ function addLog(entry, data, vendedorCode){
   return log;
 }
 
+// Combina en "logs" las gestiones que ya están en la planilla de Google pero
+// que este dispositivo nunca vio (porque se cargaron desde el celular de otro
+// vendedor). Evita duplicados: si la gestión ya se cargó en este mismo
+// dispositivo (o ya se había traído antes), no se agrega de nuevo.
+function mergeRemoteGestiones(remoteRows){
+  let agregadas = 0;
+  for(const r of remoteRows){
+    if(!r || r.cliente === undefined || r.cliente === null || r.cliente === '') continue;
+
+    if(r.idGestion){
+      if(logs.some(l=>l.id===r.idGestion)) continue;
+    }else{
+      // Filas cargadas antes de que existiera la columna "ID Gestión": se evita
+      // duplicar comparando cliente + vendedor + monto + minuto de carga.
+      const yaExiste = logs.some(l=>
+        String(l.codigo)===String(r.cliente) &&
+        String(l.vendedorCode)===String(r.vendedorCode) &&
+        Math.abs((Number(l.monto)||0) - (Number(r.montoCobrado)||0)) < 0.5 &&
+        Math.abs((l.ts||0) - (r.fechaCarga||0)) < 60000
+      );
+      if(yaExiste) continue;
+    }
+
+    const entry = appData.entries.find(e=> String(e.codigo)===String(r.cliente));
+    logs.push({
+      id: r.idGestion || ('remote-' + r.rowIndex),
+      ts: r.fechaCarga || Date.now(),
+      vendedorCode: String(r.vendedorCode || ''),
+      vendedorNombre: r.vendedorNombre || ('V'+r.vendedorCode),
+      codigo: String(r.cliente),
+      razon: (entry && entry.razon) || ('Cliente '+r.cliente),
+      tipo: 'COBRADO',
+      monto: Number(r.montoCobrado)||0,
+      facturasSeleccionadas: [],
+      facturasDetalle: r.facturasDetalle || '',
+      fechaTransferencia: r.fechaTransferencia || null,
+      prioridad: r.prioridad || null,
+      saldoVencidoAlMomento: null,
+      hasFoto: !!r.imagen,
+      fotoMime: null,
+      fotoNombre: null,
+      comentario: r.observaciones || '',
+      synced: true,
+      driveLink: r.imagen || null,
+      syncError: null,
+      remote: true, // viene de otro dispositivo, no de este navegador
+    });
+    agregadas++;
+  }
+  if(agregadas > 0) saveLogs();
+  return agregadas;
+}
+
 /* ---------------------------- Nombres de vendedor ---------------------------- */
 // El Excel de rutas solo trae el código numérico de vendedor (ej. 31), no el nombre.
 // Se guarda un mapeo editable código -> nombre para que la hoja de cálculo quede prolija

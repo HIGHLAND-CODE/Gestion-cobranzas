@@ -15,6 +15,7 @@ async function syncLogToSheet(log){
   const entry = appData.entries.find(e=> e.codigo===log.codigo && String(e.vendedor)===String(log.vendedorCode));
   const payload = {
     action: 'gestion',
+    logId: log.id,
     vendedorCode: log.vendedorCode,
     vendedorNombre: log.vendedorNombre,
     clienteCodigo: log.codigo,
@@ -186,5 +187,28 @@ async function autoUpdateRouteData(showToasts){
     render();
   }else if(showToasts){
     showToast('No se pudo actualizar la ruta: ' + (r.error||''), 'err');
+  }
+}
+
+/* ==========================================================================
+   Sincronización de GESTIONES (lectura) — para el panel del administrador
+   ==========================================================================
+   Cada celular sube sus propias gestiones a la planilla, pero antes nadie las
+   volvía a bajar: el panel de administrador solo mostraba lo que ya tenía
+   guardado localmente en esa PC. Estas funciones traen todas las gestiones
+   de la planilla (de cualquier vendedor, en cualquier dispositivo) y las
+   combinan con el historial local, sin duplicar lo que ya está.
+   ========================================================================== */
+
+async function pullGestionesFromBackend(){
+  if(!isSyncConfigured()) return {ok:false, error:'SCRIPT_URL sin configurar'};
+  try{
+    const res = await fetch(SCRIPT_URL + '?action=getGestiones');
+    const data = await res.json();
+    if(!data.ok) return {ok:false, error: data.error || 'No se pudieron obtener las gestiones'};
+    const agregadas = mergeRemoteGestiones(data.rows || []);
+    return {ok:true, total:(data.rows||[]).length, agregadas};
+  }catch(err){
+    return {ok:false, error:'Sin conexión o error de red al descargar gestiones'};
   }
 }

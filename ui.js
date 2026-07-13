@@ -461,6 +461,7 @@ function tplAdminGestiones(){
     </select>
     <button class="btn btn-accent btn-sm" id="btnExportLogs">⬇ Exportar Excel</button>
   </div>
+  ${isSyncConfigured() ? `<div style="padding:0 18px 10px"><button class="btn btn-ghost btn-block" id="btnRefreshGestiones">⟳ Buscar gestiones de todos los vendedores</button></div>` : ''}
   <div class="kpi-row">
     <div class="kpi ok"><div class="k-label">Total cobrado</div><div class="k-value">${fmtMoney(total)}</div></div>
     <div class="kpi"><div class="k-label">Gestiones</div><div class="k-value">${filtered.length}</div></div>
@@ -1009,6 +1010,11 @@ function wireEvents(){
         try{ src = await idbGet(STORE_PHOTOS, log.id); }catch(e){ console.error(e); }
       }
       if(src){ ui.lightboxPhoto = src; renderModals(); }
+      else if(log.driveLink){
+        // El comprobante de esta gestión se cargó desde otro dispositivo: no
+        // está guardado acá, pero sí en Drive — se abre directamente ese link.
+        window.open(log.driveLink, '_blank');
+      }
       else showToast('No se pudo cargar el comprobante', 'err');
     };
   });
@@ -1025,7 +1031,15 @@ function wireEvents(){
 
   // ADMIN TABS
   document.querySelectorAll('[data-atab]').forEach(b=>{
-    b.onclick = ()=>{ ui.adminTab = b.dataset.atab; render(); };
+    b.onclick = ()=>{
+      ui.adminTab = b.dataset.atab;
+      render();
+      // Al entrar a Gestiones, se busca en la planilla lo que hayan cargado
+      // otros vendedores desde su celular (antes solo se veía lo local de esta PC).
+      if(ui.adminTab === 'gestiones' && isSyncConfigured()){
+        pullGestionesFromBackend().then(r=>{ if(r.ok && r.agregadas>0) render(); });
+      }
+    };
   });
 
   // ADMIN IMPORTAR
@@ -1107,6 +1121,15 @@ function wireEvents(){
     showToast('Buscando la ruta más reciente...', '');
     const r = await pullRouteDataFromBackend();
     if(r.ok) showToast('Ruta actualizada', 'ok'); else showToast('No se pudo actualizar: '+(r.error||''), 'err');
+    render();
+  };
+  const btnRefreshGestiones = document.getElementById('btnRefreshGestiones');
+  if(btnRefreshGestiones) btnRefreshGestiones.onclick = async ()=>{
+    if(!isSyncConfigured()){ showToast('Falta configurar la conexión con Google (config.js)', 'err'); return; }
+    showToast('Buscando gestiones en la planilla...', '');
+    const r = await pullGestionesFromBackend();
+    if(r.ok) showToast(r.agregadas>0 ? r.agregadas+' gestión(es) nueva(s) encontrada(s)' : 'Ya estabas al día', 'ok');
+    else showToast('No se pudo actualizar: '+(r.error||''), 'err');
     render();
   };
 
