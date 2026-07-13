@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SARC-611 · Interfaz
+   CobroSync · Interfaz
    ========================================================================== */
 
 let ui = {
@@ -45,7 +45,7 @@ function topbar({title, subtitle, showBack, showLogout, showSync}){
   return `
   <div class="topbar">
     <div class="brand">
-      ${showBack ? `<button class="icon-btn" id="btnBack">←</button>` : `<div class="brand-mark">611</div>`}
+      ${showBack ? `<button class="icon-btn" id="btnBack">←</button>` : `<div class="brand-mark">CS</div>`}
       <div class="brand-text"><b>${title}</b><span>${subtitle}</span></div>
     </div>
     <div class="topbar-actions">
@@ -60,10 +60,10 @@ function topbar({title, subtitle, showBack, showLogout, showSync}){
 function tplLogin(){
   return `
   <div class="app-shell">
-    ${topbar({title:'Cobranzas 611', subtitle:'Sistema de ruteo y gestión'})}
+    ${topbar({title:'CobroSync', subtitle:'Sistema de ruteo y gestión'})}
     <div class="login-wrap">
       <div class="login-hero">
-        <div class="mark">611</div>
+        <div class="mark">CS</div>
         <h1>Bienvenido</h1>
         <p>Elegí cómo querés ingresar al sistema</p>
       </div>
@@ -86,7 +86,7 @@ function tplLogin(){
 function tplSellerLogin(){
   return `
   <div class="app-shell">
-    ${topbar({title:'Ingreso Vendedor', subtitle:'Cobranzas 611', showBack:true})}
+    ${topbar({title:'Ingreso Vendedor', subtitle:'CobroSync', showBack:true})}
     <div class="login-wrap">
       <div class="login-form">
         <h2>Ingresá tu código</h2>
@@ -105,7 +105,7 @@ function tplSellerLogin(){
 function tplAdminLogin(){
   return `
   <div class="app-shell">
-    ${topbar({title:'Ingreso Administrador', subtitle:'Cobranzas 611', showBack:true})}
+    ${topbar({title:'Ingreso Administrador', subtitle:'CobroSync', showBack:true})}
     <div class="login-wrap">
       <div class="login-form">
         <h2>Clave de acceso</h2>
@@ -319,7 +319,7 @@ function tplAdminShell(){
 
   return `
   <div class="app-shell wide">
-    ${topbar({title:'Panel Administrador', subtitle:'Cobranzas 611', showLogout:true, showSync:true})}
+    ${topbar({title:'Panel Administrador', subtitle:'CobroSync', showLogout:true, showSync:true})}
     <div class="admin-tabs">
       ${tabs.map(([k,l])=>`<button class="admin-tab ${ui.adminTab===k?'active':''}" data-atab="${k}">${l}</button>`).join('')}
     </div>

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SARC-611 · Sistema Automatizado de Cobranzas y Ruteo
+   CobroSync · Sistema Automatizado de Cobranzas y Ruteo
    Núcleo: estado, persistencia y parseo de Excel
    ========================================================================== */
 
