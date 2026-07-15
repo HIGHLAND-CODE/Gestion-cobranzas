@@ -521,7 +521,7 @@ function tplAdminVendedores(){
   return `
   <div class="view-header">
     <h1>Nombres de vendedor</h1>
-    <div class="meta">El Excel de rutas solo trae el código (ej. V31). Completá el nombre real para que quede prolijo en la planilla de Google Sheets.</div>
+    <div class="meta">Si el Excel trae la columna "nombre" junto al código de vendedor, se completa solo al importar. Si algún código todavía no tiene nombre, completalo acá una sola vez — no hace falta repetirlo en el Excel ni volver a escribirlo en futuras importaciones.</div>
   </div>
   <div class="table-wrap"><table>
     <thead><tr><th>Código</th><th>Nombre</th></tr></thead>
@@ -1058,7 +1058,9 @@ function wireEvents(){
   const btnClearData = document.getElementById('btnClearData');
   if(btnClearData) btnClearData.onclick = ()=>{
     if(confirm('¿Borrar todos los datos importados (rutas y deudas)? Las gestiones registradas NO se van a borrar.')){
-      appData = {entries:[], vendedores:[], importedAt:null, routesInfo:null, debtInfo:null};
+      // Los nombres de vendedor (pestaña Vendedores) tampoco se borran: son un dato
+      // aparte que no debería perderse solo porque se reimportan rutas/deudas.
+      appData = {entries:[], vendedores:[], importedAt:null, routesInfo:null, debtInfo:null, vendedorNombres: appData.vendedorNombres || {}};
       saveData();
       render();
     }
@@ -1169,6 +1171,9 @@ async function handleImport(fileList){
     }else{
       ui.adminTab = 'resumen';
       render();
+      if(results.nombresAutocompletados > 0){
+        showToast(results.nombresAutocompletados + ' nombre(s) de vendedor completados automáticamente desde el Excel.', 'ok');
+      }
       if(isSyncConfigured()){
         showToast('Importación completa. Subiendo ruta para que la vean los vendedores...', '');
         const r = await syncRouteDataToBackend();

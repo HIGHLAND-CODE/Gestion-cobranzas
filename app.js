@@ -258,11 +258,13 @@ function processRoutesRows(rows, headers){
   const kDireccion = findKey(headers, ['direccion']);
   const kZona = findKey(headers, ['zona']);
   const kVendedor = findKey(headers, ['vendedor']);
+  const kNombreVend = findKey(headers, ['nombre']);
   const dayKeys = {};
   for(const dk in DIA_COLS){
     dayKeys[dk] = findKey(headers, [dk]);
   }
   const out = [];
+  const vendedorNombres = {};
   for(const row of rows){
     const codigo = row[kCodigo];
     if(codigo === null || codigo === undefined || codigo === '') continue;
@@ -271,16 +273,21 @@ function processRoutesRows(rows, headers){
       const key = dayKeys[dk];
       if(key && row[key] && Number(row[key]) !== 0) dias.push(DIA_COLS[dk]);
     }
+    const vendedor = row[kVendedor] != null ? String(row[kVendedor]).trim() : '';
+    if(vendedor && kNombreVend){
+      const nombre = (row[kNombreVend]||'').toString().trim();
+      if(nombre) vendedorNombres[vendedor] = nombre;
+    }
     out.push({
       codigo: String(codigo).trim(),
       razon: (row[kRazon]||'').toString().trim(),
       direccion: (row[kDireccion]||'').toString().trim(),
       zona: row[kZona] != null ? String(row[kZona]) : '',
-      vendedor: row[kVendedor] != null ? String(row[kVendedor]).trim() : '',
+      vendedor,
       dias,
     });
   }
-  return out;
+  return { entries: out, vendedorNombres };
 }
 
 function processDebtRows(rows, headers){
@@ -298,8 +305,11 @@ function processDebtRows(rows, headers){
   const kLoc = findKey(headers, ['localidad']);
   const kCond = findKey(headers, ['condpago']);
   const kFantasia = findKey(headers, ['fantasia']);
+  const kVendedor = findKey(headers, ['vendedor']);
+  const kNombreVend = findKey(headers, ['nombre']);
 
   const byClient = {};
+  const vendedorNombres = {};
   // El archivo "BIEN" puede traer MÁS DE UNA fila para el mismo comprobante
   // cuando ya se le aplicó un pago parcial (la factura original + el movimiento
   // del pago parcial, cada una con su propio importe). Hay que sumar todas las
@@ -324,6 +334,11 @@ function processDebtRows(rows, headers){
         cond_pago: kCond ? (row[kCond]||'') : '',
         fantasia: kFantasia ? (row[kFantasia]||'') : '',
       };
+    }
+    if(kVendedor && kNombreVend){
+      const vend = row[kVendedor] != null ? String(row[kVendedor]).trim() : '';
+      const nombre = (row[kNombreVend]||'').toString().trim();
+      if(vend && nombre) vendedorNombres[vend] = nombre;
     }
     if(!compAcc[key]){
       compAcc[key] = { code, comp, monto: 0, vencimiento: kVenc ? row[kVenc] : null };
@@ -352,7 +367,7 @@ function processDebtRows(rows, headers){
     byClient[code].saldo = Math.round(byClient[code].saldo*100)/100;
     byClient[code].detalle.sort((a,b)=> (new Date(a.vencimiento||0)) - (new Date(b.vencimiento||0)));
   }
-  return byClient;
+  return { byClient, vendedorNombres };
 }
 
 function mergeData(routeEntries, debtByClient){
@@ -386,15 +401,23 @@ async function importFiles(fileList){
   const files = Array.from(fileList);
   let routeEntries = null, debtByClient = null;
   const results = {routes:null, debts:null, unknown:[]};
+  // Nombres de vendedor detectados en los propios Excel (columna "nombre" junto a
+  // "vendedor"). Se usan para completar solos la pestaña Vendedores, sin pisar un
+  // nombre que el administrador ya haya escrito a mano ahí.
+  const vendedorNombresDetectados = {};
   for(const f of files){
     try{
       const {rows, headers} = await readWorkbook(f);
       const type = detectFileType(headers);
       if(type === 'routes'){
-        routeEntries = processRoutesRows(rows, headers);
+        const r = processRoutesRows(rows, headers);
+        routeEntries = r.entries;
+        Object.assign(vendedorNombresDetectados, r.vendedorNombres);
         results.routes = {name:f.name, rows: rows.length};
       }else if(type === 'debts'){
-        debtByClient = processDebtRows(rows, headers);
+        const r = processDebtRows(rows, headers);
+        debtByClient = r.byClient;
+        Object.assign(vendedorNombresDetectados, r.vendedorNombres);
         results.debts = {name:f.name, rows: rows.length, clientes: Object.keys(debtByClient).length};
       }else{
         results.unknown.push(f.name);
@@ -413,6 +436,16 @@ async function importFiles(fileList){
     appData.debtInfo = results.debts;
     _lastDebtByClient = debtByClient;
   }
+
+  if(!appData.vendedorNombres) appData.vendedorNombres = {};
+  let nombresNuevos = 0;
+  for(const code in vendedorNombresDetectados){
+    if(!appData.vendedorNombres[code]){
+      appData.vendedorNombres[code] = vendedorNombresDetectados[code];
+      nombresNuevos++;
+    }
+  }
+  results.nombresAutocompletados = nombresNuevos;
 
   if(_lastRouteEntries && _lastDebtByClient){
     appData.entries = mergeData(_lastRouteEntries, _lastDebtByClient);
